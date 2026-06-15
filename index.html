@@ -29,6 +29,8 @@
   <div class="w-full max-w-4xl mb-12">
     <div class="relative">
       <input type="text" id="search-input" placeholder="Search .ass track, artist, or source..." class="w-full bg-zinc-950 border-2 border-red-700 rounded-2xl px-6 py-4 text-lg text-white focus:outline-none focus:border-red-500 transition-colors shadow-lg shadow-red-500/20" />
+      <span id="search-loading" class="absolute right-10 top-4 text-sm text-red-300 hidden">Loading…</span>
+      <span class="absolute right-4 top-4 text-zinc-400">🔎</span>
     </div>
   </div>
 
@@ -213,8 +215,37 @@
       `).join("");
     }
 
-    document.getElementById("search-input").addEventListener("input", (e) => fetchDrops(e.target.value));
-    fetchDrops();
+    // lrclib-style search: debounce input, Enter triggers immediate search, show loading
+    const searchInputEl = document.getElementById('search-input');
+    const searchLoadingEl = document.getElementById('search-loading');
+
+    function debounce(fn, wait) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), wait);
+      };
+    }
+
+    const debouncedFetch = debounce((q) => {
+      if (searchLoadingEl) searchLoadingEl.classList.remove('hidden');
+      fetchDrops(q).finally(() => { if (searchLoadingEl) searchLoadingEl.classList.add('hidden'); });
+    }, 300);
+
+    if (searchInputEl) {
+      searchInputEl.addEventListener('input', (e) => debouncedFetch(e.target.value));
+      searchInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (searchLoadingEl) searchLoadingEl.classList.remove('hidden');
+          fetchDrops(searchInputEl.value).finally(() => { if (searchLoadingEl) searchLoadingEl.classList.add('hidden'); });
+        }
+      });
+    }
+
+    // initial load
+    if (searchLoadingEl) searchLoadingEl.classList.remove('hidden');
+    fetchDrops().finally(() => { if (searchLoadingEl) searchLoadingEl.classList.add('hidden'); });
 
     // Toggle explanatory panel for .ass files
     const whatAssBtnEl = document.getElementById('what-ass-btn');
