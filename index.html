@@ -116,38 +116,51 @@
       setUploading(true);
       setUploadStatus('Uploading file to backend API...', 'info');
 
-      const fileContent = await file.text();
-      const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      try {
+        const fileContent = await file.text();
+        const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-      const response = await fetch(`${API_BASE}/api/upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          file_name: safeFileName,
-          file_content: fileContent,
-          content_type: file.type || 'text/plain',
-          track_name: trackName,
-          artist_name: artistName,
-          source_type: sourceType,
-          duration,
-          has_karaoke_fx: hasFx
-        })
-      });
+        const response = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            file_name: safeFileName,
+            file_content: fileContent,
+            content_type: file.type || 'text/plain',
+            track_name: trackName,
+            artist_name: artistName,
+            source_type: sourceType,
+            duration,
+            has_karaoke_fx: hasFx
+          })
+        });
 
-      const result = await response.json();
-      if (!response.ok) {
+        const text = await response.text();
+        let result;
+        try {
+          result = JSON.parse(text);
+        } catch (parseError) {
+          result = { error: text || response.statusText };
+        }
+
+        if (!response.ok) {
+          console.error('Upload failed', response.status, result);
+          setUploadStatus('Upload error: ' + (result.error || response.statusText), 'error');
+          return;
+        }
+
+        setUploadStatus('Upload successful! Refreshing feed…', 'success');
+        await fetchDrops();
+        uploadForm.reset();
+        durationInput.value = '';
+      } catch (err) {
+        console.error('Upload request failed:', err);
+        setUploadStatus('Upload error: ' + err.message, 'error');
+      } finally {
         setUploading(false);
-        setUploadStatus('Upload error: ' + (result.error || response.statusText), 'error');
-        return;
       }
-
-      setUploadStatus('Upload successful! Refreshing feed…', 'success');
-      await fetchDrops();
-      uploadForm.reset();
-      durationInput.value = '';
-      setUploading(false);
     });
 
     async function fetchDrops(query = "") {
