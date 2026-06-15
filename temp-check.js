@@ -1,57 +1,3 @@
-<!DOCTYPE html>
-<html lang="en" class="bg-zinc-950 text-zinc-100">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ass.here | The .ass library</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="min-h-screen flex flex-col items-center p-6 font-sans">
-
-  <div class="text-center mt-10 mb-8 w-full max-w-4xl">
-    <h1 class="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500 mb-2">ass.here</h1>
-    <p class="text-zinc-400 font-medium tracking-wide">the open-source karaoke & sub registry</p>
-  </div>
-
-  <div class="w-full max-w-4xl mb-12">
-    <div class="relative">
-      <input type="text" id="search-input" placeholder="Search track, artist, or source..." class="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 text-lg text-white focus:outline-none focus:border-purple-500 transition-colors shadow-lg" />
-      <span class="absolute right-4 top-4 text-2xl">🔍</span>
-    </div>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl flex-grow">
-    
-    <!-- Upload Zone -->
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl h-fit">
-      <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><span>📤</span> Drop a File</h2>
-      <form id="ass-upload-form" class="flex flex-col gap-4">
-        <input type="file" id="ass-file" accept=".ass" required class="w-full text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-purple-500/10 file:text-purple-400 cursor-pointer bg-zinc-950 p-2 border border-zinc-800 rounded-xl" />
-        <div class="grid grid-cols-2 gap-4">
-          <input type="text" id="track-name" placeholder="Track Name" required class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2" />
-          <input type="text" id="artist-name" placeholder="Artist" required class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2" />
-        </div>
-        <select id="source-type" class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2">
-          <option value="Anime">Anime</option>
-          <option value="Song">Song</option>
-        </select>
-        <input type="number" id="audio-duration" placeholder="Duration (s) - Auto-filled" readonly class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 opacity-70" />
-        <label class="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
-          <input type="checkbox" id="karaoke-fx" class="accent-purple-500" /> Includes Karaoke FX ✨
-        </label>
-        <button type="submit" class="w-full py-3 bg-purple-600 hover:bg-purple-500 font-bold rounded-xl shadow-lg shadow-purple-500/20">Push to Cloud ☁️</button>
-        <div id="upload-status" class="min-h-[1.25rem] text-sm text-zinc-400"></div>
-      </form>
-    </div>
-
-    <!-- Live Feed -->
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 h-fit">
-      <h2 class="text-xl font-bold flex items-center gap-2"><span>🔥</span> Live Drops</h2>
-      <div id="feed-container" class="flex flex-col gap-3"></div>
-    </div>
-  </div>
-
-  <script>
     const API_BASE = '';
 
     const assFileInput = document.getElementById("ass-file");
@@ -173,6 +119,3 @@
 
     document.getElementById("search-input").addEventListener("input", (e) => fetchDrops(e.target.value));
     fetchDrops();
-  </script>
-</body>
-</html>
