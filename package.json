@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.local.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.40.0",
