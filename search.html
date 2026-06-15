@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-black text-white">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Search · ass.here</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-black text-white p-6 font-sans">
+  <main class="max-w-4xl mx-auto">
+    <header class="mb-6 flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-black text-red-400">Search results</h1>
+        <p class="text-zinc-400 text-sm">Results for your query</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="/index.html" class="text-sm text-zinc-300 underline">Back</a>
+      </div>
+    </header>
+
+    <div class="mb-6">
+      <input id="search-input" class="w-full bg-zinc-950 border border-red-700 rounded-xl px-4 py-3 text-white" />
+    </div>
+
+    <section id="results" class="grid gap-4"></section>
+  </main>
+
+  <script>
+    const API_BASE = '';
+
+    function getQueryParam(name) {
+      return new URLSearchParams(window.location.search).get(name) || '';
+    }
+
+    const query = getQueryParam('q');
+    const searchInput = document.getElementById('search-input');
+    const resultsEl = document.getElementById('results');
+
+    if (searchInput) searchInput.value = query;
+
+    async function fetchResults(q) {
+      resultsEl.innerHTML = '<p class="text-zinc-500">Loading…</p>';
+      const resp = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(q || '')}`);
+      if (!resp.ok) {
+        const txt = await resp.text();
+        resultsEl.innerHTML = `<p class="text-red-400">Error: ${txt}</p>`;
+        return;
+      }
+      const json = await resp.json();
+      const data = json.data || [];
+      if (!data.length) {
+        resultsEl.innerHTML = '<p class="text-zinc-500">No results found.</p>';
+        return;
+      }
+      resultsEl.innerHTML = data.map(t => `
+        <div class="p-4 bg-zinc-950 rounded-xl border border-zinc-800 flex justify-between items-center">
+          <div>
+            <p class="font-bold text-white">${t.track_name}</p>
+            <p class="text-xs text-zinc-500 mt-1">${t.artist_name} • ${t.source_type}</p>
+          </div>
+          <div class="text-right">
+            <span class="text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-zinc-400">${t.duration}s</span>
+            <a href="${t.file_url}" target="_blank" class="text-red-400 text-xs mt-1 inline-block hover:underline">Download</a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Trigger search on Enter
+    searchInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = searchInput.value.trim();
+        window.location.search = `?q=${encodeURIComponent(q)}`;
+      }
+    });
+
+    // initial fetch
+    fetchResults(query);
+  </script>
+</body>
+</html>
