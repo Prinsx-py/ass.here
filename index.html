@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-zinc-950 text-zinc-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ass.here | The .ass library</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="min-h-screen flex flex-col items-center p-6 font-sans">
+
+  <div class="text-center mt-10 mb-8 w-full max-w-4xl">
+    <h1 class="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-500 mb-2">ass.here</h1>
+    <p class="text-zinc-400 font-medium tracking-wide">the open-source karaoke & sub registry</p>
+  </div>
+
+  <div class="w-full max-w-4xl mb-12">
+    <div class="relative">
+      <input type="text" id="search-input" placeholder="Search track, artist, or source..." class="w-full bg-zinc-900 border-2 border-zinc-800 rounded-2xl px-6 py-4 text-lg text-white focus:outline-none focus:border-purple-500 transition-colors shadow-lg" />
+      <span class="absolute right-4 top-4 text-2xl">🔍</span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl flex-grow">
+    
+    <!-- Upload Zone -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl h-fit">
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2"><span>📤</span> Drop a File</h2>
+      <form id="ass-upload-form" class="flex flex-col gap-4">
+        <input type="file" id="ass-file" accept=".ass" required class="w-full text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-purple-500/10 file:text-purple-400 cursor-pointer bg-zinc-950 p-2 border border-zinc-800 rounded-xl" />
+        <div class="grid grid-cols-2 gap-4">
+          <input type="text" id="track-name" placeholder="Track Name" required class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2" />
+          <input type="text" id="artist-name" placeholder="Artist" required class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2" />
+        </div>
+        <select id="source-type" class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2">
+          <option value="Anime">Anime</option>
+          <option value="Song">Song</option>
+        </select>
+        <input type="number" id="audio-duration" placeholder="Duration (s) - Auto-filled" readonly class="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 opacity-70" />
+        <label class="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
+          <input type="checkbox" id="karaoke-fx" class="accent-purple-500" /> Includes Karaoke FX ✨
+        </label>
+        <button type="submit" class="w-full py-3 bg-purple-600 hover:bg-purple-500 font-bold rounded-xl shadow-lg shadow-purple-500/20">Push to Cloud ☁️</button>
+      </form>
+    </div>
+
+    <!-- Live Feed -->
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-4 h-fit">
+      <h2 class="text-xl font-bold flex items-center gap-2"><span>🔥</span> Live Drops</h2>
+      <div id="feed-container" class="flex flex-col gap-3"></div>
+    </div>
+  </div>
+
+  <script>
+    // PASTE YOUR KEYS HERE
+    const supabase = supabase.createClient('https://yaktykxtgttaxdahielu.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlha3R5a3h0Z3R0YXhkYWhpZWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NTQ4MDIsImV4cCI6MjA5NzAzMDgwMn0.4986NwuNyVEh6m3SbMFzEjXpqDa2eVBMFShS1gYAios');
+
+    const assFileInput = document.getElementById("ass-file");
+    const uploadForm = document.getElementById("ass-upload-form");
+    const trackNameInput = document.getElementById("track-name");
+    const artistNameInput = document.getElementById("artist-name");
+    const sourceTypeInput = document.getElementById("source-type");
+    const durationInput = document.getElementById("audio-duration");
+    const karaokeFxInput = document.getElementById("karaoke-fx");
+    const feedContainer = document.getElementById("feed-container");
+
+    assFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const lines = text.split("\n").filter(line => line.startsWith("Dialogue:"));
+      if (!lines.length) {
+        durationInput.value = "";
+        return;
+      }
+      const lastLine = lines[lines.length - 1].split(",");
+      const [h, m, s] = lastLine[2]?.trim().split(":") ?? [];
+      if (!h || !m || !s) {
+        durationInput.value = "";
+        return;
+      }
+      durationInput.value = (parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseFloat(s)).toFixed(2);
+    });
+
+    uploadForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const file = assFileInput.files[0];
+      if (!file) {
+        alert("Please choose a .ass file to upload.");
+        return;
+      }
+
+      const trackName = trackNameInput.value.trim();
+      const artistName = artistNameInput.value.trim();
+      const sourceType = sourceTypeInput.value;
+      const duration = durationInput.value.trim();
+      const karaokeFx = karaokeFxInput.checked;
+
+      if (!trackName || !artistName || !duration) {
+        alert("Please fill in Track Name, Artist, and allow duration to auto-fill.");
+        return;
+      }
+
+      const fileName = `${Date.now()}_${file.name}`;
+      const bucketName = "ass-files";
+
+      const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+      if (uploadError) {
+        alert(`Upload failed: ${uploadError.message}`);
+        return;
+      }
+
+      const { data: publicData, error: publicError } = await supabase.storage.from(bucketName).createSignedUrl(fileName, 60 * 60);
+      if (publicError) {
+        alert(`Could not get a file URL: ${publicError.message}`);
+        return;
+      }
+
+      const fileUrl = publicData.signedUrl;
+      const { error: insertError } = await supabase.from("ass_tracks").insert([{
+        track_name: trackName,
+        artist_name: artistName,
+        source_type: sourceType,
+        duration: parseFloat(duration),
+        has_karaoke_fx: karaokeFx,
+        file_url: fileUrl,
+      }]);
+
+      if (insertError) {
+        alert(`Database save failed: ${insertError.message}`);
+        return;
+      }
+
+      uploadForm.reset();
+      durationInput.value = "";
+      await fetchDrops();
+      alert("File uploaded successfully. Feed refreshed.");
+    });
+
+    async function fetchDrops(query = "") {
+      let request = supabase.from("ass_tracks").select("*").order("created_at", { ascending: false });
+      if (query) {
+        request = request.or(`track_name.ilike.%${query}%,artist_name.ilike.%${query}%`);
+      }
+
+      const { data, error } = await request;
+      if (error) {
+        feedContainer.innerHTML = `<p class="text-red-500 text-sm">Error loading drops: ${error.message}</p>`;
+        return;
+      }
+
+      if (!data || !data.length) {
+        feedContainer.innerHTML = '<p class="text-zinc-500 text-sm text-center py-4">No drops yet. Upload the first .ass file!</p>';
+        return;
+      }
+
+      feedContainer.innerHTML = data.map(track => `
+        <div class="p-4 bg-zinc-950 rounded-xl border border-zinc-800 hover:border-purple-500 flex justify-between items-center">
+          <div>
+            <p class="font-bold">${track.track_name}</p>
+            <p class="text-xs text-zinc-500 mt-1">${track.artist_name} • ${track.source_type}</p>
+          </div>
+          <div class="text-right">
+            <span class="text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-zinc-400">${track.duration}s</span>
+            <a href="${track.file_url}" target="_blank" class="text-purple-400 text-xs mt-1 inline-block hover:underline">Download</a>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    document.getElementById("search-input").addEventListener("input", (e) => fetchDrops(e.target.value));
+    fetchDrops();
+  </script>
+</body>
+</html>
