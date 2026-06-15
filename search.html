@@ -40,19 +40,20 @@
 
     async function fetchResults(q) {
       resultsEl.innerHTML = '<p class="text-zinc-500">Loading…</p>';
-      const resp = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(q || '')}`);
-      if (!resp.ok) {
-        const txt = await resp.text();
-        resultsEl.innerHTML = `<p class="text-red-400">Error: ${txt}</p>`;
-        return;
-      }
-      const json = await resp.json();
-      const data = json.data || [];
-      if (!data.length) {
-        resultsEl.innerHTML = '<p class="text-zinc-500">No results found.</p>';
-        return;
-      }
-      resultsEl.innerHTML = data.map(t => `
+      try {
+        const resp = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(q || '')}`);
+        if (!resp.ok) {
+          const txt = await resp.text();
+          resultsEl.innerHTML = `<p class="text-red-400">Error: ${txt || resp.statusText}</p>`;
+          return;
+        }
+        const json = await resp.json();
+        const data = json.data || [];
+        if (!data.length) {
+          resultsEl.innerHTML = '<p class="text-zinc-500">It seems nobody made this, be the first one to make one</p>';
+          return;
+        }
+        resultsEl.innerHTML = data.map(t => `
         <div class="p-4 bg-zinc-950 rounded-xl border border-zinc-800 flex justify-between items-center">
           <div>
             <p class="font-bold text-white">${t.track_name}</p>
