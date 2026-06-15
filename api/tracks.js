@@ -35,12 +35,25 @@ export default async function handler(req, res) {
   const supabase = supabaseResult.client;
 
   const query = String(req.query.query || '');
+  const hasKaraokeRaw = req.query.has_karaoke_fx;
+  const limit = Math.min(100, Number(req.query.limit || 50));
+  const offset = Math.max(0, Number(req.query.offset || 0));
+
   let request = supabase.from('ass_tracks').select('*').order('created_at', { ascending: false });
   if (query) {
     request = request.or(`track_name.ilike.%${query}%,artist_name.ilike.%${query}%`);
   }
 
-  const { data, error } = await request;
+  if (typeof hasKaraokeRaw !== 'undefined') {
+    const val = String(hasKaraokeRaw).toLowerCase();
+    const bool = ['1', 'true', 'yes', 'on'].includes(val);
+    request = request.eq('has_karaoke_fx', bool);
+  }
+
+  // apply pagination using range
+  const start = offset;
+  const end = offset + limit - 1;
+  const { data, error } = await request.range(start, end);
   if (error) {
     return res.status(500).json({ error: error.message });
   }

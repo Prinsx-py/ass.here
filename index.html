@@ -12,9 +12,17 @@
     <h1 class="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-red-400 to-black mb-2">ass.here</h1>
     <p class="text-red-200 font-medium tracking-wide">A community-driven database for .ass files. Upload, share, and download</p>
     <div class="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-      <a href="https://github.com/Prinsx-py/ass.here" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2 rounded-full border border-red-500 bg-red-600/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-600/20">
-        GitHub
-      </a>
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/Prinsx-py/ass.here" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2 rounded-full border border-red-500 bg-red-600/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-600/20">
+          GitHub
+        </a>
+        <button id="what-ass-btn" aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900/80">What are '.ass' files?</button>
+      </div>
+    </div>
+
+    <div id="ass-explanation" class="mt-4 max-w-3xl mx-auto text-sm text-zinc-300 hidden">
+      <p class="mb-2">".ass" stands for Advanced SubStation Alpha — a plain-text subtitle format for advanced timed text. It supports styling, precise timing (including per-syllable/karaoke-style timing), positioning, and rich formatting used in captions and fansubbing.</p>
+      <p>Use cases: captioning videos, timed lyrics, karaoke, fansubbing, and sharing styled subtitles with timestamps. Uploads here let others download and reuse .ass files across players and projects.</p>
     </div>
   </div>
 
@@ -207,6 +215,17 @@
 
     document.getElementById("search-input").addEventListener("input", (e) => fetchDrops(e.target.value));
     fetchDrops();
+
+    // Toggle explanatory panel for .ass files
+    const whatAssBtnEl = document.getElementById('what-ass-btn');
+    const assExplanationEl = document.getElementById('ass-explanation');
+    if (whatAssBtnEl && assExplanationEl) {
+      whatAssBtnEl.addEventListener('click', () => {
+        assExplanationEl.classList.toggle('hidden');
+        const expanded = assExplanationEl.classList.contains('hidden') ? 'false' : 'true';
+        whatAssBtnEl.setAttribute('aria-expanded', expanded);
+      });
+    }
   </script>
 </body>
 </html>
