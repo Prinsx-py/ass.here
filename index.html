@@ -116,20 +116,27 @@
       setUploading(true);
       setUploadStatus('Uploading file to backend API...', 'info');
 
-      const body = new FormData();
-      body.append('file', file);
-      body.append('track_name', trackName);
-      body.append('artist_name', artistName);
-      body.append('source_type', sourceType);
-      body.append('duration', duration);
-      body.append('has_karaoke_fx', hasFx ? 'true' : 'false');
+      const fileContent = await file.text();
+      const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
       const response = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
-        body,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          file_name: safeFileName,
+          file_content: fileContent,
+          content_type: file.type || 'text/plain',
+          track_name: trackName,
+          artist_name: artistName,
+          source_type: sourceType,
+          duration,
+          has_karaoke_fx: hasFx
+        })
       });
-      const result = await response.json();
 
+      const result = await response.json();
       if (!response.ok) {
         setUploading(false);
         setUploadStatus('Upload error: ' + (result.error || response.statusText), 'error');
