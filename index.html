@@ -75,261 +75,174 @@
     </div>
   </div>
 
-  <script>
-    // API base is empty to use relative URLs (same domain)
-    // For different API domains, configure at build time or via reverse proxy
-    const API_BASE = '';
-    const sourceTypeInput = document.getElementById('source-type');
-    const sourceContextInput = document.getElementById('source-context');
-    
-    sourceTypeInput.addEventListener('change', () => {
-      const type = sourceTypeInput.value;
-      
-      sourceContextInput.disabled = false;
-      sourceContextInput.classList.remove('opacity-70');
-      
-      if (type === 'Song') {
-        sourceContextInput.placeholder = 'Album name';
-      } else if (type === 'Anime') {
-        sourceContextInput.placeholder = 'Anime name';
-      } else {
-        sourceContextInput.placeholder = 'Please choose a Source Type first';
-        sourceContextInput.disabled = true;
-      }
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+
+  const API_BASE = '';
+
+  const sourceTypeInput = document.getElementById('source-type');
+  const sourceContextInput = document.getElementById('source-context');
+  const assFileInput = document.getElementById("ass-file");
+  const uploadForm = document.getElementById("ass-upload-form");
+  const trackNameInput = document.getElementById("track-name");
+  const artistNameInput = document.getElementById("artist-name");
+  const durationInput = document.getElementById("audio-duration");
+  const karaokeFxInput = document.getElementById("karaoke-fx");
+  const uploadStatus = document.getElementById("upload-status");
+  const uploadButton = uploadForm.querySelector("button[type='submit']");
+  const feedContainer = document.getElementById("feed-container");
+
+  sourceTypeInput.addEventListener('change', () => {
+    const type = sourceTypeInput.value;
+
+    sourceContextInput.disabled = false;
+    sourceContextInput.classList.remove('opacity-70');
+
+    if (type === 'Song') {
+      sourceContextInput.placeholder = 'Album name';
+    } else if (type === 'Anime') {
+      sourceContextInput.placeholder = 'Anime name';
+    } else {
+      sourceContextInput.placeholder = 'Please choose a Source Type first';
+      sourceContextInput.disabled = true;
     }
-  );
+  });
 
-    const assFileInput = document.getElementById("ass-file");
-    const uploadForm = document.getElementById("ass-upload-form");
-    const trackNameInput = document.getElementById("track-name");
-    const artistNameInput = document.getElementById("artist-name");
-    const durationInput = document.getElementById("audio-duration");
-    const karaokeFxInput = document.getElementById("karaoke-fx");
-    const uploadStatus = document.getElementById("upload-status");
-    const uploadButton = uploadForm.querySelector("button[type='submit']");
-    const feedContainer = document.getElementById("feed-container");
+  function setUploadStatus(message, type = "info") {
+    uploadStatus.textContent = message;
+    uploadStatus.className =
+      `min-h-[1.25rem] text-sm ${
+        type === 'error' ? 'text-red-400' :
+        type === 'success' ? 'text-emerald-400' :
+        'text-red-300'
+      }`;
+  }
 
-    function setUploadStatus(message, type = "info") {
-      uploadStatus.textContent = message;
-      uploadStatus.className = `min-h-[1.25rem] text-sm ${type === 'error' ? 'text-red-400' : type === 'success' ? 'text-emerald-400' : 'text-red-300'}`;
+  function setUploading(isUploading) {
+    uploadButton.disabled = isUploading;
+    uploadButton.textContent = isUploading ? 'Uploading…' : 'Push to Cloud ☁️';
+  }
+
+  assFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return (durationInput.value = "");
+
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").filter(l => l.startsWith("Dialogue:"));
+      if (!lines.length) return (durationInput.value = "");
+
+      const lastLine = lines[lines.length - 1].split(",");
+      const timeField = lastLine[2]?.trim();
+      const [h, m, s] = timeField?.split(":") ?? [];
+
+      if (!h || !m || !s) return (durationInput.value = "");
+
+      durationInput.value =
+        (parseInt(h, 10) * 3600 +
+        parseInt(m, 10) * 60 +
+        parseFloat(s)).toFixed(2);
+
+    } catch (err) {
+      console.error(err);
+      durationInput.value = "";
     }
+  });
 
-    function setUploading(isUploading) {
-      uploadButton.disabled = isUploading;
-      uploadButton.textContent = isUploading ? 'Uploading…' : 'Push to Cloud ☁️';
-    }
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
 
-    assFileInput.addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      if (!file) {
-        durationInput.value = "";
-        return;
-      }
-      try {
-        const text = await file.text();
-        const lines = text.split("\n").filter(line => line.startsWith("Dialogue:"));
-        if (!lines.length) {
-          durationInput.value = "";
-          return;
-        }
-        const lastLine = lines[lines.length - 1].split(",");
-        const timeField = lastLine[2]?.trim();
-        const [h, m, s] = timeField?.split(":") ?? [];
-        if (!h || !m || !s) {
-          durationInput.value = "";
-          return;
-        }
-        durationInput.value = (parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseFloat(s)).toFixed(2);
-      } catch (err) {
-        console.error('Failed to parse .ass duration', err);
-        durationInput.value = "";
-      }
-    });
+    const file = assFileInput.files[0];
+    const trackName = trackNameInput.value.trim();
+    const artistName = artistNameInput.value.trim();
+    const sourceType = sourceTypeInput.value;
+    const duration = durationInput.value;
+    const hasFx = karaokeFxInput.checked;
+    const sourceContext = sourceContextInput.value.trim();
 
-    uploadForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const file = document.getElementById('ass-file').files[0];
-      const trackName = document.getElementById('track-name').value.trim();
-      const artistName = document.getElementById('artist-name').value.trim();
-      const sourceType = document.getElementById('source-type').value;
-      const duration = document.getElementById('audio-duration').value;
-      const hasFx = document.getElementById('karaoke-fx').checked;
-      const sourceContext = document.getElementById('source-context').value.trim();
-
-      if (!file) {
-        setUploadStatus('Please choose a .ass file to upload.', 'error');
-        return;
-      }
-
-      if (!trackName || !artistName || !duration) {
-        setUploadStatus('Track, artist and duration are required.', 'error');
-        return;
-      }
-
-      setUploading(true);
-      setUploadStatus('Uploading file to backend API...', 'info');
-
-      try {
-        const fileContent = await file.text();
-        const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-        const response = await fetch(`${API_BASE}/api/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            file_name: safeFileName,
-            file_content: fileContent,
-            content_type: file.type || 'text/plain',
-            track_name: trackName,
-            artist_name: artistName,
-            source_type: sourceType,
-            duration,
-            has_karaoke_fx: hasFx,
-            
-            album: sourceType === 'Song' ? sourceContext : null,
-            anime: sourceType === 'Anime' ? sourceContext : null
-          }),
-        });
-
-        const text = await response.text();
-        let result;
-        try {
-          result = JSON.parse(text);
-        } catch (parseError) {
-          result = { error: text || response.statusText };
-        }
-
-        if (!response.ok) {
-          console.error('Upload failed', response.status, result);
-          setUploadStatus('Upload error: ' + (result.error || response.statusText), 'error');
-          return;
-        }
-
-        setUploadStatus('Upload successful! Refreshing feed…', 'success');
-        await fetchDrops();
-        uploadForm.reset();
-        durationInput.value = '';
-      } catch (err) {
-        console.error('Upload request failed:', err);
-        setUploadStatus('Upload error: ' + err.message, 'error');
-      } finally {
-        setUploading(false);
-      }
-    });
-
-    async function fetchDrops(query = "") {
-      try {
-        const response = await fetch(
-          `${API_BASE}/api/tracks?query=${encodeURIComponent(query)}`
-        );
-        const result = await response.json();
-
-        if (!response.ok) {
-          feedContainer.innerHTML = `<p class="text-red-500 text-sm">Error loading drops: ${result.error || response.statusText}</p>`;
-          return;
-        }
-
-        if (!result.data || !result.data.length) {
-          feedContainer.innerHTML = '<p class="text-zinc-500 text-sm text-center py-4">No drops yet. Upload the first .ass file!</p>';
-          return;
-        }
-
-        // Render items with textContent to avoid stored XSS
-        feedContainer.innerHTML = '';
-        (result.data || []).forEach(track => {
-          const card = document.createElement('div');
-          card.className = 'p-4 bg-zinc-950 rounded-xl border border-zinc-800 hover:border-red-500 flex justify-between items-center';
-
-          const left = document.createElement('div');
-          const title = document.createElement('p');
-          title.className = 'font-bold';
-          title.textContent = track.track_name || '';
-          left.appendChild(title);
-
-          const meta = document.createElement('p');
-          meta.className = 'text-xs text-zinc-500 mt-1';
-          meta.textContent = `${track.artist_name || ''} • ${track.source_type || ''}`;
-          left.appendChild(meta);
-          
-          // 🎯 Album / Anime dynamic field
-          const context = document.createElement('p');
-          context.className = 'text-xs text-red-300 mt-1';
-          
-          if (track.source_type === 'Song' && track.album) {
-            context.textContent = `💿 Album: ${track.album}`;
-          } else if (track.source_type === 'Anime' && track.anime) {
-            context.textContent = `🎌 Anime: ${track.anime}`;
-          }
-          // only render if exists
-          if (context.textContent) {
-            left.appendChild(context);
-          }
-
-          const right = document.createElement('div');
-          right.className = 'text-right';
-
-          const dur = document.createElement('span');
-          dur.className = 'text-xs font-mono bg-zinc-800 px-2 py-1 rounded text-zinc-400';
-          dur.textContent = `${track.duration || ''}s`;
-          right.appendChild(dur);
-
-          const a = document.createElement('a');
-          a.href = track.file_url || '#';
-          a.target = '_blank';
-          a.className = 'text-red-400 text-xs mt-1 inline-block hover:underline';
-          a.textContent = 'Download';
-          right.appendChild(a);
-
-          card.appendChild(left);
-          card.appendChild(right);
-          feedContainer.appendChild(card);
-        });
-      } catch (err) {
-        console.error('Error fetching drops:', err);
-        feedContainer.innerHTML = `<p class="text-red-500 text-sm">Error: ${err.message}</p>`;
-      }
+    if (!file || !trackName || !artistName || !duration) {
+      setUploadStatus("Missing fields", "error");
+      return;
     }
 
-    // Search now navigates to a dedicated search page to show results
-    const searchInputEl = document.getElementById('search-input');
-    const searchGoEl = document.getElementById('search-go');
+    setUploading(true);
 
-    function goToSearch(q) {
-      const qstr = String(q || '').trim();
-      // navigate to search page (even empty query allowed)
-      const url = '/search.html?q=' + encodeURIComponent(qstr);
-      window.location.href = url;
-    }
+    try {
+      const fileContent = await file.text();
+      const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    if (searchInputEl) {
-      searchInputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          goToSearch(searchInputEl.value);
-        }
+      const res = await fetch(`${API_BASE}/api/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_name: safeFileName,
+          file_content: fileContent,
+          track_name: trackName,
+          artist_name: artistName,
+          source_type: sourceType,
+          duration,
+          has_karaoke_fx: hasFx,
+          album: sourceType === "Song" ? sourceContext : null,
+          anime: sourceType === "Anime" ? sourceContext : null
+        })
       });
-    }
 
-    if (searchGoEl) {
-      searchGoEl.addEventListener('click', () => goToSearch(searchInputEl?.value || ''));
-    }
+      setUploading(false);
+      setUploadStatus(res.ok ? "Uploaded!" : "Upload failed", res.ok ? "success" : "error");
 
-    // initial load: show recent uploads on index as before
-    fetchDrops();
+      await fetchDrops();
 
-    // Toggle explanatory panel for .ass files
-    const whatAssBtnEl = document.getElementById('what-ass-btn');
-    const assExplanationEl = document.getElementById('ass-explanation');
-    if (whatAssBtnEl && assExplanationEl) {
-      whatAssBtnEl.addEventListener('click', () => {
-        assExplanationEl.classList.toggle('hidden');
-        const expanded = assExplanationEl.classList.contains('hidden') ? 'false' : 'true';
-        whatAssBtnEl.setAttribute('aria-expanded', expanded);
-      });
+      uploadForm.reset();
+      durationInput.value = "";
+
+    } catch (err) {
+      setUploading(false);
+      setUploadStatus(err.message, "error");
     }
-  </script>
+  });
+
+  async function fetchDrops(query = "") {
+    const response = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(query)}`);
+    const result = await response.json();
+
+    feedContainer.innerHTML = "";
+
+    (result.data || []).forEach(track => {
+      const card = document.createElement("div");
+      card.className = "p-4 bg-zinc-950 rounded-xl border border-zinc-800 flex justify-between";
+
+      const left = document.createElement("div");
+
+      const title = document.createElement("p");
+      title.textContent = track.track_name;
+      title.className = "font-bold";
+      left.appendChild(title);
+
+      const meta = document.createElement("p");
+      meta.textContent = `${track.artist_name} • ${track.source_type}`;
+      meta.className = "text-xs text-zinc-500";
+      left.appendChild(meta);
+
+      const right = document.createElement("div");
+      const a = document.createElement("a");
+      a.href = track.file_url
+      ? track.file_url + (track.file_url.includes("?") ? "&download=1" : "?download=1")
+      : "#";
+      a.textContent = "Download";
+      a.className = "text-red-400 text-xs";
+      a.setAttribute("download", "");
+
+      right.appendChild(a);
+
+      card.appendChild(left);
+      card.appendChild(right);
+      feedContainer.appendChild(card);
+    });
+  }
+
+  fetchDrops();
+
+});
+</script>
 </body>
 </html>
