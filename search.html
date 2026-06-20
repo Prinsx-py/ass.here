@@ -26,90 +26,7 @@
   </main>
 
   <script>
-    // API Configuration Module (Browser-compatible)
-    const apiConfig = {
-      defaultBase: 'https://ass.here',
-      fallbackBases: ['https://api.ass.here'],
-      timeout: 10000,
-      retryCount: 2,
-
-      getApiBase() {
-        const stored = localStorage.getItem('ASS_HERE_API_BASE');
-        if (stored) return stored;
-        return this.defaultBase;
-      },
-
-      setApiBase(url) {
-        if (url) {
-          try {
-            new URL(url);
-            localStorage.setItem('ASS_HERE_API_BASE', url);
-            return true;
-          } catch (err) {
-            console.error('Invalid URL:', err);
-            return false;
-          }
-        } else {
-          localStorage.removeItem('ASS_HERE_API_BASE');
-          return true;
-        }
-      },
-
-      getCandidateUrls() {
-        const candidates = [];
-        const stored = localStorage.getItem('ASS_HERE_API_BASE');
-        if (stored) candidates.push(stored);
-        candidates.push(this.defaultBase);
-        candidates.push(...this.fallbackBases);
-        return [...new Set(candidates)];
-      },
-
-      async fetch(endpoint, options = {}) {
-        const candidates = this.getCandidateUrls();
-        let lastError = null;
-
-        for (let attempt = 0; attempt < this.retryCount + 1; attempt++) {
-          for (const baseUrl of candidates) {
-            try {
-              const url = new URL(endpoint, baseUrl).toString();
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-              const response = await fetch(url, {
-                ...options,
-                signal: controller.signal
-              });
-
-              clearTimeout(timeoutId);
-
-              if (!response.ok && attempt < this.retryCount) {
-                lastError = new Error(`HTTP ${response.status}`);
-                continue;
-              }
-
-              return response;
-            } catch (err) {
-              lastError = err;
-              continue;
-            }
-          }
-        }
-
-        const error = new Error(lastError?.message || 'API unreachable');
-        error.candidates = candidates;
-        throw error;
-      },
-
-      async fetchJson(endpoint, options = {}) {
-        const response = await this.fetch(endpoint, options);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      }
-    };
-
-    const API_BASE = apiConfig.getApiBase();
+    const API_BASE = '';
 
     function getQueryParam(name) {
       return new URLSearchParams(window.location.search).get(name) || '';
@@ -124,7 +41,7 @@
     async function fetchResults(q) {
       resultsEl.innerHTML = '<p class="text-zinc-500">Loading…</p>';
       try {
-        const resp = await apiConfig.fetch(`/api/tracks?query=${encodeURIComponent(q || '')}`);
+        const resp = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(q || '')}`);
         if (!resp.ok) {
           const txt = await resp.text();
           resultsEl.innerHTML = `<p class="text-red-400">Error: ${txt || resp.statusText}</p>`;
@@ -174,12 +91,7 @@
         });
       } catch (err) {
         console.error(err);
-        if (err.message.includes('unreachable')) {
-          resultsEl.innerHTML = `<p class="text-red-400">❌ API Unreachable: ${err.message}</p>
-            <p class="text-zinc-400 text-sm mt-2">Check your internet connection or configure a custom API base URL. <a href="/" class="underline">Go back</a> and use API Settings.</p>`;
-        } else {
-          resultsEl.innerHTML = `<p class="text-red-400">Error: ${err?.message || 'Failed to load results'}</p>`;
-        }
+        resultsEl.innerHTML = `<p class="text-red-400">Error: ${err?.message || 'Failed to load results'}</p>`;
       }
     }
 

@@ -8,11 +8,6 @@
 </head>
 <body class="min-h-screen flex flex-col items-center p-6 font-sans bg-black text-white">
 
-  <!-- API Status Notification -->
-  <div id="api-status" class="w-full max-w-4xl mb-4 p-4 rounded-lg hidden" role="alert">
-    <div id="api-status-content" class="text-sm"></div>
-  </div>
-
   <div class="text-center mt-10 mb-8 w-full max-w-4xl">
     <h1 class="text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-red-400 to-black mb-2">ass.here</h1>
     <p class="text-red-200 font-medium tracking-wide">A community-driven database for .ass files. Upload, share, and download</p>
@@ -22,36 +17,12 @@
           GitHub
         </a>
         <button id="what-ass-btn" aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900/80">What are '.ass' files?</button>
-        <button id="api-config-btn" type="button" aria-expanded="false" class="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/40 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900/60">⚙️ API Settings</button>
       </div>
     </div>
 
     <div id="ass-explanation" class="mt-4 max-w-3xl mx-auto text-sm text-zinc-300 hidden">
       <p class="mb-2">".ass" stands for Advanced SubStation Alpha — a plain-text subtitle format for advanced timed text. It supports styling, precise timing (including per-syllable/karaoke-style timing), positioning, and rich formatting used in captions and fansubbing.</p>
       <p>Use cases: captioning videos, timed lyrics, karaoke, fansubbing, and sharing styled subtitles with timestamps. Uploads here let others download and reuse .ass files across players and projects.</p>
-    </div>
-
-    <!-- API Configuration Panel -->
-    <div id="api-config-panel" class="mt-4 max-w-3xl mx-auto text-sm bg-zinc-900/50 border border-zinc-700 rounded-lg p-4 hidden">
-      <div class="text-left">
-        <h3 class="font-bold text-zinc-100 mb-3">API Configuration</h3>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-xs text-zinc-400 mb-1">Current API Base:</label>
-            <code id="current-api-base" class="block bg-black px-2 py-1 rounded text-xs text-green-400 font-mono overflow-x-auto">https://ass.here</code>
-          </div>
-          <div>
-            <label class="block text-xs text-zinc-400 mb-1">Custom API Base URL:</label>
-            <input type="url" id="custom-api-base-input" placeholder="https://api.example.com" class="w-full bg-black border border-zinc-700 rounded px-2 py-1 text-xs text-white font-mono focus:border-red-500 outline-none" />
-          </div>
-          <div class="flex gap-2">
-            <button id="set-api-base-btn" type="button" class="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-semibold">Save</button>
-            <button id="clear-api-base-btn" type="button" class="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded font-semibold">Reset to Default</button>
-            <button id="test-api-btn" type="button" class="px-3 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded font-semibold">Test Connection</button>
-          </div>
-          <div id="api-test-result" class="text-xs text-zinc-400"></div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -96,197 +67,9 @@
   </div>
 
   <script>
-    // ========================================================================
-    // API Configuration Module (Browser-compatible)
-    // ========================================================================
-    const apiConfig = {
-      defaultBase: 'https://ass.here',
-      fallbackBases: ['https://api.ass.here'],
-      timeout: 10000,
-      retryCount: 2,
-
-      getApiBase() {
-        const stored = localStorage.getItem('ASS_HERE_API_BASE');
-        if (stored) return stored;
-        return this.defaultBase;
-      },
-
-      setApiBase(url) {
-        if (url) {
-          try {
-            new URL(url);
-            localStorage.setItem('ASS_HERE_API_BASE', url);
-            return true;
-          } catch (err) {
-            console.error('Invalid URL:', err);
-            return false;
-          }
-        } else {
-          localStorage.removeItem('ASS_HERE_API_BASE');
-          return true;
-        }
-      },
-
-      getCandidateUrls() {
-        const candidates = [];
-        const stored = localStorage.getItem('ASS_HERE_API_BASE');
-        if (stored) candidates.push(stored);
-        candidates.push(this.defaultBase);
-        candidates.push(...this.fallbackBases);
-        return [...new Set(candidates)];
-      },
-
-      async fetch(endpoint, options = {}) {
-        const candidates = this.getCandidateUrls();
-        let lastError = null;
-
-        for (let attempt = 0; attempt < this.retryCount + 1; attempt++) {
-          for (const baseUrl of candidates) {
-            try {
-              const url = new URL(endpoint, baseUrl).toString();
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-              const response = await fetch(url, {
-                ...options,
-                signal: controller.signal
-              });
-
-              clearTimeout(timeoutId);
-
-              if (!response.ok && attempt < this.retryCount) {
-                lastError = new Error(`HTTP ${response.status}`);
-                continue;
-              }
-
-              return response;
-            } catch (err) {
-              lastError = err;
-              continue;
-            }
-          }
-        }
-
-        const error = new Error(lastError?.message || 'API unreachable');
-        error.candidates = candidates;
-        throw error;
-      },
-
-      async fetchJson(endpoint, options = {}) {
-        const response = await this.fetch(endpoint, options);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      }
-    };
-
-    // Show/hide API config panel
-    const apiConfigBtn = document.getElementById('api-config-btn');
-    const apiConfigPanel = document.getElementById('api-config-panel');
-    const currentApiBaseEl = document.getElementById('current-api-base');
-    const customApiBaseInput = document.getElementById('custom-api-base-input');
-    const setApiBaseBtn = document.getElementById('set-api-base-btn');
-    const clearApiBaseBtn = document.getElementById('clear-api-base-btn');
-    const testApiBtn = document.getElementById('test-api-btn');
-    const apiTestResult = document.getElementById('api-test-result');
-
-    if (apiConfigBtn) {
-      apiConfigBtn.addEventListener('click', () => {
-        apiConfigPanel.classList.toggle('hidden');
-        const expanded = apiConfigPanel.classList.contains('hidden') ? 'false' : 'true';
-        apiConfigBtn.setAttribute('aria-expanded', expanded);
-        customApiBaseInput.value = localStorage.getItem('ASS_HERE_API_BASE') || '';
-      });
-    }
-
-    if (setApiBaseBtn) {
-      setApiBaseBtn.addEventListener('click', () => {
-        const url = customApiBaseInput.value.trim();
-        if (url && !apiConfig.setApiBase(url)) {
-          apiTestResult.textContent = '❌ Invalid URL format';
-          apiTestResult.className = 'text-xs text-red-400';
-          return;
-        }
-        apiTestResult.textContent = '✓ Saved!';
-        apiTestResult.className = 'text-xs text-green-400';
-        currentApiBaseEl.textContent = apiConfig.getApiBase();
-        setTimeout(() => {
-          apiTestResult.textContent = '';
-        }, 2000);
-      });
-    }
-
-    if (clearApiBaseBtn) {
-      clearApiBaseBtn.addEventListener('click', () => {
-        apiConfig.setApiBase('');
-        customApiBaseInput.value = '';
-        currentApiBaseEl.textContent = apiConfig.getApiBase();
-        apiTestResult.textContent = '✓ Reset to default';
-        apiTestResult.className = 'text-xs text-green-400';
-        setTimeout(() => {
-          apiTestResult.textContent = '';
-        }, 2000);
-      });
-    }
-
-    if (testApiBtn) {
-      testApiBtn.addEventListener('click', async () => {
-        apiTestResult.textContent = '⏳ Testing...';
-        apiTestResult.className = 'text-xs text-yellow-400';
-        try {
-          const data = await apiConfig.fetchJson('/api/v1/health');
-          if (data.status === 'healthy') {
-            apiTestResult.textContent = '✓ API is healthy';
-            apiTestResult.className = 'text-xs text-green-400';
-          } else {
-            apiTestResult.textContent = '⚠ API returned: ' + (data.status || 'unknown');
-            apiTestResult.className = 'text-xs text-yellow-400';
-          }
-        } catch (err) {
-          apiTestResult.textContent = '❌ ' + (err.message || 'Connection failed');
-          apiTestResult.className = 'text-xs text-red-400';
-        }
-      });
-    }
-
-    currentApiBaseEl.textContent = apiConfig.getApiBase();
-
-    // ========================================================================
-    // Show API Status Notification
-    // ========================================================================
-    const apiStatusEl = document.getElementById('api-status');
-    const apiStatusContent = document.getElementById('api-status-content');
-
-    async function checkApiHealth() {
-      try {
-        const health = await apiConfig.fetchJson('/api/v1/health');
-        if (health.status !== 'healthy') {
-          showApiStatus('⚠️ API may be experiencing issues', 'warning');
-        }
-      } catch (err) {
-        showApiStatus(
-          `❌ API Unreachable: ${err.message}. ` +
-          `<a href="#" onclick="document.getElementById('api-config-btn').click(); return false;" class="underline">Configure API settings</a> or check your internet connection.`,
-          'error'
-        );
-      }
-    }
-
-    function showApiStatus(message, type = 'info') {
-      apiStatusEl.className = `w-full max-w-4xl mb-4 p-4 rounded-lg ${
-        type === 'error' ? 'bg-red-900/30 border border-red-700 text-red-200' :
-        type === 'warning' ? 'bg-yellow-900/30 border border-yellow-700 text-yellow-200' :
-        'bg-blue-900/30 border border-blue-700 text-blue-200'
-      }`;
-      apiStatusContent.innerHTML = message;
-      apiStatusEl.classList.remove('hidden');
-    }
-
-    // Check API health on page load
-    checkApiHealth();
-
-    const API_BASE = apiConfig.getApiBase();
+    // API base is empty to use relative URLs (same domain)
+    // For different API domains, configure at build time or via reverse proxy
+    const API_BASE = '';
 
     const assFileInput = document.getElementById("ass-file");
     const uploadForm = document.getElementById("ass-upload-form");
@@ -363,7 +146,7 @@
         const fileContent = await file.text();
         const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-        const response = await apiConfig.fetch(`/api/upload`, {
+        const response = await fetch(`${API_BASE}/api/upload`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -400,11 +183,7 @@
         durationInput.value = '';
       } catch (err) {
         console.error('Upload request failed:', err);
-        if (err.message.includes('unreachable')) {
-          setUploadStatus('❌ API unreachable. Check your internet connection or configure API settings.', 'error');
-        } else {
-          setUploadStatus('Upload error: ' + err.message, 'error');
-        }
+        setUploadStatus('Upload error: ' + err.message, 'error');
       } finally {
         setUploading(false);
       }
@@ -412,7 +191,7 @@
 
     async function fetchDrops(query = "") {
       try {
-        const response = await apiConfig.fetch(`/api/tracks?query=${encodeURIComponent(query)}`);
+        const response = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(query)}`);
         const result = await response.json();
 
         if (!response.ok) {

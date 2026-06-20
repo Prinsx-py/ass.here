@@ -13,34 +13,19 @@ This guide explains how to configure clients to connect to the ass.here API with
 
 ## Overview
 
-By default, all clients attempt to reach the API at `https://ass.here`. However, if:
+ass.here provides **secure-by-default** clients with a clear separation between frontend and backend:
 
-- DNS resolution fails (domain not resolvable)
-- The API is deployed to a different domain
-- You're testing locally
-- You want redundancy and fallbacks
+### Browser Frontend (Public)
+- **Cannot be reconfigured by users** — connects to the domain it's served from
+- Prevents DNS hijacking and social engineering attacks
+- Deploy frontend + API on the same domain (Vercel, traditional server) or use a reverse proxy
 
-...you need to configure an alternative API base URL.
+### Server-Side Clients (CLI, Node.js)
+- **Can be configured via environment variables** for flexible deployment
+- Supports automatic retry, fallbacks, and timeout handling
+- Use `lib/api-config.js` module
 
-### How Configuration Works
-
-The ass.here client library supports configuration through multiple methods (in order of priority):
-
-1. **Environment Variables** (highest priority)
-   - `ASS_HERE_API_BASE` — Custom API base URL
-   - `ASS_HERE_TIMEOUT` — Request timeout (milliseconds)
-   - `ASS_HERE_RETRY_COUNT` — Number of retries
-
-2. **Browser LocalStorage**
-   - Set via: `apiConfig.setApiBase('https://your-api.com')`
-   - Persists across page reloads
-
-3. **Runtime Configuration**
-   - Set programmatically in code
-
-4. **Defaults**
-   - Primary: `https://ass.here`
-   - Fallbacks: `https://api.ass.here`
+**Key Point:** If you see an error from the browser frontend saying the API is unreachable, it's likely a network/DNS issue, not a configuration problem. Check your internet connection and ensure your API is deployed correctly on the same domain.
 
 ---
 
@@ -48,50 +33,67 @@ The ass.here client library supports configuration through multiple methods (in 
 
 ### Using the Frontend (index.html / search.html)
 
-The HTML frontend automatically uses the API configuration system.
+The HTML frontend is designed for **public deployment** with a fixed API endpoint. It does NOT have user-configurable API settings to prevent DNS hijacking and other security issues.
 
-#### Option 1: Environment Variable (Build Time)
+#### How API URL is Determined
 
-If you're building a static site:
+The frontend always uses the **same domain it was served from**:
+- If you access `https://ass.here/`, it calls `https://ass.here/api/v1/*`
+- If you access `https://my-custom-domain.com/`, it calls `https://my-custom-domain.com/api/v1/*`
+
+This ensures users cannot be socially engineered into connecting to malicious servers.
+
+#### Option 1: Deploy to Your API Domain (Recommended)
+
+Host the static HTML files (`index.html`, `search.html`) on **the same domain** as your API:
 
 ```bash
-# Set before building
-export ASS_HERE_API_BASE="https://api.example.com"
-npm run build  # or your build command
+# On Vercel:
+# Deploy both frontend and API to the same project
+# They'll share the same domain automatically
+
+# On other platforms:
+# Serve index.html and search.html from the same server as /api/
 ```
 
-#### Option 2: LocalStorage (Runtime)
+This is the simplest and most secure approach.
 
-Open the browser console and run:
+#### Option 2: Use a Reverse Proxy
 
-```javascript
-// Set the API base for this browser
-localStorage.setItem('ASS_HERE_API_BASE', 'https://api.example.com');
+If you need to serve the frontend separately, use a reverse proxy to combine them:
 
-// Or use the helper
-apiConfig.setApiBase('https://api.example.com');
+```nginx
+# Nginx example
+server {
+  listen 443 ssl;
+  server_name ass.here;
 
-// Verify
-console.log(apiConfig.getApiBase());
+  # Serve static frontend files
+  location / {
+    root /var/www/ass.here;
+    try_files $uri /index.html;
+  }
+
+  # Proxy API requests to backend server
+  location /api/ {
+    proxy_pass https://api-backend.internal/api/;
+    proxy_set_header Host $host;
+  }
+}
 ```
 
-This persists until you clear localStorage.
+Users accessing `https://ass.here/` see the frontend, and `/api/` requests go to your backend.
 
-#### Option 3: Check the API Base
+#### Option 3: Configure at Build Time (Advanced)
 
-```javascript
-// Check what API base is currently configured
-console.log(apiConfig.getApiBase());
+If using a build tool like Webpack/Vite, set API_BASE at build time:
 
-// Get all candidate URLs (primary + fallbacks)
-console.log(apiConfig.getCandidateUrls());
-
-// Test connectivity
-apiConfig.fetch('/api/v1/health')
-  .then(res => res.json())
-  .then(data => console.log('API status:', data.status))
-  .catch(err => console.error('API unreachable:', err.message));
+```bash
+# Build with custom API base
+API_BASE=https://api.example.com npm run build
 ```
+
+Then embed it in the bundled JavaScript. **Requires rebuilding for each deployment.**
 
 ---
 
@@ -99,7 +101,9 @@ apiConfig.fetch('/api/v1/health')
 
 ### Using the API Configuration Module
 
-For Node.js applications and CLI tools:
+The `lib/api-config.js` module provides robust API client configuration **for server-side use only** (CLI tools, Node.js apps, backend services).
+
+**Do NOT use this in browser code** — the browser frontend uses a fixed API endpoint for security.
 
 ```javascript
 import apiConfig from './lib/api-config.js';
@@ -207,7 +211,7 @@ ass-cli search "query"
 
 ## Docker Deployment
 
-If deploying a client in Docker:
+If deploying a **server-side** client (CLI tool, Node.js service) in Docker:
 
 ```dockerfile
 FROM node:18-alpine
@@ -220,7 +224,7 @@ COPY . .
 # Install dependencies
 RUN npm install
 
-# Set environment variable
+# Set environment variable (for server-side tools only)
 ENV ASS_HERE_API_BASE=https://api.example.com
 
 # Run your CLI tool or app
@@ -234,18 +238,31 @@ docker build -t my-ass-client .
 docker run -e ASS_HERE_API_BASE=https://api.example.com my-ass-client
 ```
 
+**Note:** The browser frontend does NOT use environment variables — it must be deployed on the same domain as the API.
+
 ---
 
 ## Troubleshooting
 
-### Problem: "API unreachable" but API is running
+### Problem: Browser frontend says "API unreachable"
 
-**Diagnosis:**
+**Cause:** The API is not available on the same domain as the frontend
+
+**Solutions:**
+1. Check that your API is deployed and running
+2. Verify DNS: `nslookup your-domain.com`
+3. Test API health: `curl https://your-domain.com/api/v1/health`
+4. Check internet connection
+5. Review [HOSTING.md](HOSTING.md#dns-configuration) for DNS configuration issues
+
+### Problem: Node.js/CLI tool says "API unreachable"
+
+**Diagnostic:**
 
 ```javascript
 // Test DNS resolution
 import dns from 'dns';
-dns.resolve4('ass.here', (err, addresses) => {
+dns.resolve4('your-api-domain.com', (err, addresses) => {
   if (err) {
     console.error('DNS failed:', err.code);  // ENOTFOUND = not resolvable
   } else {
@@ -253,17 +270,17 @@ dns.resolve4('ass.here', (err, addresses) => {
   }
 });
 
-// Test connectivity
-apiConfig.fetch('/api/v1/health')
-  .then(res => res.json())
+// Test connectivity with apiConfig
+import apiConfig from './lib/api-config.js';
+apiConfig.fetchJson('/api/v1/health')
   .then(data => console.log('Status:', data.status))
   .catch(err => console.error('Connection error:', err.message));
 ```
 
 **Solutions:**
-1. Verify DNS: `nslookup ass.here` or `dig ass.here`
-2. Set custom API base: `apiConfig.setApiBase('https://working-api.com')`
-3. Check timeout: Increase `ASS_HERE_TIMEOUT` if network is slow
+1. Verify DNS: `nslookup your-api-domain.com` or `dig your-api-domain.com`
+2. Set custom API base: `export ASS_HERE_API_BASE=https://working-api.com`
+3. Check timeout: Increase `ASS_HERE_TIMEOUT=30000` if network is slow
 4. Increase retries: Set `ASS_HERE_RETRY_COUNT=5` for flaky networks
 
 ### Problem: "Timeout" errors on slow network
@@ -271,7 +288,7 @@ apiConfig.fetch('/api/v1/health')
 **Solutions:**
 
 ```bash
-# Increase timeout to 30 seconds
+# Increase timeout to 30 seconds (milliseconds)
 export ASS_HERE_TIMEOUT=30000
 your-cli-tool search "query"
 ```
@@ -279,6 +296,7 @@ your-cli-tool search "query"
 Or in code:
 
 ```javascript
+import apiConfig from './lib/api-config.js';
 apiConfig.timeout = 30000;  // milliseconds
 ```
 
@@ -287,9 +305,12 @@ apiConfig.timeout = 30000;  // milliseconds
 **Cause:** Browser blocking cross-origin requests
 
 **Solutions:**
-1. Use the same domain for API (best)
-2. Check that API returns `Access-Control-Allow-Origin` header
-3. API should already have CORS enabled (check `api/` handlers)
+1. **Deploy frontend and API on same domain** (best)
+   - Frontend should be served from the same domain as the API
+   - Use Vercel, traditional server, or reverse proxy setup
+2. Ensure your API returns correct CORS headers
+   - Check that responses include `Access-Control-Allow-Origin: *`
+   - ass.here API handlers should already have CORS enabled
 
 ### Problem: Rate limiting (HTTP 429)
 
@@ -308,7 +329,9 @@ apiConfig.timeout = 30000;  // milliseconds
 
 ## Performance Tips
 
-### 1. Use Health Check Before Making Requests
+### For Node.js / Server-Side Clients
+
+#### 1. Use Health Check Before Making Requests
 
 ```javascript
 // Only attempt searches if API is healthy
@@ -318,7 +341,7 @@ if (healthCheck.status === 'healthy') {
 }
 ```
 
-### 2. Cache Results
+#### 2. Cache Results
 
 ```javascript
 const cache = new Map();
@@ -335,7 +358,7 @@ async function cachedSearch(query) {
 }
 ```
 
-### 3. Batch Requests
+#### 3. Batch Requests
 
 Instead of:
 ```javascript
@@ -351,7 +374,7 @@ const results = await Promise.all(
 );
 ```
 
-### 4. Handle Errors Gracefully
+#### 4. Handle Errors Gracefully
 
 ```javascript
 try {
@@ -367,6 +390,8 @@ try {
 
 ## Verifying Your Setup
 
+### For Browser Frontend
+
 ```bash
 # Test 1: Check DNS resolution
 nslookup ass.here
@@ -379,13 +404,29 @@ curl https://ass.here/api/v1/health
 
 # Test 4: Test search endpoint
 curl 'https://ass.here/api/v1/search?q=test'
+```
 
-# Test 5: With custom API base
-ASS_HERE_API_BASE=https://custom-api.com node -e "
+### For Server-Side Clients (Node.js / CLI)
+
+```bash
+# Test 1: Check DNS resolution
+nslookup your-api-domain.com
+
+# Test 2: Test API with custom base
+ASS_HERE_API_BASE=https://your-api-domain.com node -e "
   import('./lib/api-config.js').then(m => {
     console.log('API Base:', m.apiConfig.getApiBase());
+    return m.apiConfig.fetchJson('/api/v1/health');
+  }).then(data => {
+    console.log('Health:', data.status);
+  }).catch(err => {
+    console.error('Error:', err.message);
   })
 "
+
+# Test 3: Use your CLI tool
+export ASS_HERE_API_BASE=https://your-api-domain.com
+your-cli-tool search "query"
 ```
 
 ---

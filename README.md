@@ -105,34 +105,29 @@ Test with: `nslookup ass.here` or `dig ass.here`
 
 ## Client Setup & Configuration
 
-ass.here provides clients with automatic fallback and retry logic. However, if you're hosting on a custom domain or the default `ass.here` domain is unreachable, clients need configuration.
+ass.here provides **secure-by-default** clients:
 
-### For Users / Developers Using ass.here
+### Browser Frontend (index.html / search.html)
 
-See [**CLIENT_SETUP.md**](CLIENT_SETUP.md) for comprehensive client configuration guides including:
-- Configuring browsers to use a custom API base
-- Configuring Node.js / CLI tools via environment variables
-- Handling DNS resolution failures gracefully
-- Troubleshooting connection issues
-- Performance optimization tips
+⚠️ **Security:** The browser frontend uses a **fixed API endpoint** (same domain it's served from) to prevent DNS hijacking and social engineering. Users cannot change the API URL via the UI.
 
-**Quick start:**
+- **Deploy on same domain as API** (Vercel, traditional server)
+- **Or use a reverse proxy** to combine frontend + backend on one domain
+- See [CLIENT_SETUP.md Browser Clients](CLIENT_SETUP.md#browser-clients) for deployment options
 
-Browser (in console):
-```javascript
-apiConfig.setApiBase('https://your-api-domain.com');
-```
+### Server-Side Clients (CLI tools, Node.js apps)
 
-Node.js / CLI (in terminal):
+Server-side tools can use flexible API configuration via environment variables:
+
 ```bash
 export ASS_HERE_API_BASE=https://your-api-domain.com
-your-cli-tool search "query"
+export ASS_HERE_TIMEOUT=15000
+export ASS_HERE_RETRY_COUNT=3
 ```
 
-Docker:
-```dockerfile
-ENV ASS_HERE_API_BASE=https://your-api-domain.com
-```
+Uses `lib/api-config.js` for retry logic, fallbacks, and error handling.
+
+See [CLIENT_SETUP.md Node.js Clients](CLIENT_SETUP.md#nodejs-clients) and [CLIENT_SETUP.md CLI Tools](CLIENT_SETUP.md#cli-tools).
 
 ---
 
