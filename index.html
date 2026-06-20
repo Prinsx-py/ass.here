@@ -46,6 +46,13 @@
           <input type="text" id="artist-name" placeholder="Artist" required class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white" />
         </div>
         <select id="source-type" required class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white">
+          <input
+          type="text"
+          id="source-context"
+          placeholder="Please choose a Source Type first"
+          disabled
+          class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white opacity-70"
+          />
           <option value="" disabled selected hidden>What type?</option>
           <option value="Anime">Anime</option>
           <option value="Song">Song</option>
@@ -70,6 +77,24 @@
     // API base is empty to use relative URLs (same domain)
     // For different API domains, configure at build time or via reverse proxy
     const API_BASE = '';
+    const sourceContextInput = document.getElementById('source-context');
+    
+    sourceTypeInput.addEventListener('change', () => {
+      const type = sourceTypeInput.value;
+      
+      sourceContextInput.disabled = false;
+      sourceContextInput.classList.remove('opacity-70');
+      
+      if (type === 'Song') {
+        sourceContextInput.placeholder = 'Album name';
+      } else if (type === 'Anime') {
+        sourceContextInput.placeholder = 'Anime name';
+      } else {
+        sourceContextInput.placeholder = 'Please choose a Source Type first';
+        sourceContextInput.disabled = true;
+      }
+    }
+  );
 
     const assFileInput = document.getElementById("ass-file");
     const uploadForm = document.getElementById("ass-upload-form");
@@ -128,6 +153,7 @@
       const sourceType = document.getElementById('source-type').value;
       const duration = document.getElementById('audio-duration').value;
       const hasFx = document.getElementById('karaoke-fx').checked;
+      const sourceContext = document.getElementById('source-context').value.trim();
 
       if (!file) {
         setUploadStatus('Please choose a .ass file to upload.', 'error');
@@ -159,8 +185,11 @@
             artist_name: artistName,
             source_type: sourceType,
             duration,
-            has_karaoke_fx: hasFx
-          })
+            has_karaoke_fx: hasFx,
+            
+            album: sourceType === 'Song' ? sourceContext : null,
+            anime: sourceType === 'Anime' ? sourceContext : null
+          }),
         });
 
         const text = await response.text();
@@ -191,7 +220,9 @@
 
     async function fetchDrops(query = "") {
       try {
-        const response = await fetch(`${API_BASE}/api/tracks?query=${encodeURIComponent(query)}`);
+        const response = await fetch(
+          `${API_BASE}/api/tracks?query=${encodeURIComponent(query)}`
+        );
         const result = await response.json();
 
         if (!response.ok) {
@@ -220,6 +251,20 @@
           meta.className = 'text-xs text-zinc-500 mt-1';
           meta.textContent = `${track.artist_name || ''} • ${track.source_type || ''}`;
           left.appendChild(meta);
+          
+          // 🎯 Album / Anime dynamic field
+          const context = document.createElement('p');
+          context.className = 'text-xs text-red-300 mt-1';
+          
+          if (track.source_type === 'Song' && track.album) {
+            context.textContent = `💿 Album: ${track.album}`;
+          } else if (track.source_type === 'Anime' && track.anime) {
+            context.textContent = `🎌 Anime: ${track.anime}`;
+          }
+          // only render if exists
+          if (context.textContent) {
+            left.appendChild(context);
+          }
 
           const right = document.createElement('div');
           right.className = 'text-right';

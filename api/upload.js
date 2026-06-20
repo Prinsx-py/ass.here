@@ -87,6 +87,22 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: publicUrlError?.message || 'Could not obtain public URL' });
     }
 
+    function buildSearchText(track, artist, sourceType) {
+      return [
+        track,
+        artist,
+        sourceType
+      ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    }
+    
+    const search_text = buildSearchText(trackName, artistName, sourceType);
+
     const fileUrl = publicData.publicUrl;
     const { data: row, error: dbError } = await supabase.from('ass_tracks').insert([
       {
@@ -95,7 +111,8 @@ export default async function handler(req, res) {
         source_type: sourceType,
         duration: parseFloat(duration),
         has_karaoke_fx: hasKaraokeFx,
-        file_url: fileUrl
+        file_url: fileUrl,
+        search_text
       }
     ]).select();
 
