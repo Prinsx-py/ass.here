@@ -45,18 +45,20 @@
           <input type="text" id="track-name" placeholder="Track Name" required class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white" />
           <input type="text" id="artist-name" placeholder="Artist" required class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white" />
         </div>
-        <select id="source-type" required class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white">
-          <input
-          type="text"
-          id="source-context"
-          placeholder="Please choose a Source Type first"
-          disabled
-          class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white opacity-70"
-          />
-          <option value="" disabled selected hidden>What type?</option>
-          <option value="Anime">Anime</option>
-          <option value="Song">Song</option>
-        </select>
+        <select id="source-type" required
+        class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white">
+        <option value="" disabled selected hidden>What type?</option>
+        <option value="Anime">Anime</option>
+        <option value="Song">Song</option>
+      </select>
+      
+      <input
+      type="text"
+      id="source-context"
+      placeholder="Please choose a Source Type first"
+      disabled
+      class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white opacity-70"
+      />
         <input type="number" id="audio-duration" placeholder="Duration (s) - Auto-filled" readonly class="bg-zinc-950 border border-red-700 rounded-xl px-4 py-2 text-white opacity-70" />
         <label class="flex items-center gap-2 text-sm text-red-200 cursor-pointer">
           <input type="checkbox" id="karaoke-fx" class="accent-red-500" /> Per-syllable synced
@@ -77,6 +79,7 @@
     // API base is empty to use relative URLs (same domain)
     // For different API domains, configure at build time or via reverse proxy
     const API_BASE = '';
+    const sourceTypeInput = document.getElementById('source-type');
     const sourceContextInput = document.getElementById('source-context');
     
     sourceTypeInput.addEventListener('change', () => {
@@ -100,7 +103,6 @@
     const uploadForm = document.getElementById("ass-upload-form");
     const trackNameInput = document.getElementById("track-name");
     const artistNameInput = document.getElementById("artist-name");
-    const sourceTypeInput = document.getElementById("source-type");
     const durationInput = document.getElementById("audio-duration");
     const karaokeFxInput = document.getElementById("karaoke-fx");
     const uploadStatus = document.getElementById("upload-status");
