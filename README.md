@@ -15,9 +15,14 @@ This repository contains the frontend and serverless API used by the public site
 - Best-effort duplicate detection (SHA-256 content hash) and IP-based rate limiting on uploads.
 - Written in Node.js (ESM) and deployed as Vercel serverless functions; Supabase (Postgres + Storage) is used for persistence.
 
-## Quick API summary (v1)
-The project exposes a versioned API under `/api/v1/` (additive; legacy routes remain for now):
+## Quick API summary
+The project exposes a versioned API, but the legacy search route is the preferred working endpoint for track search in current deployments. If `/api/v1/search` is failing, use `/api/tracks?query=` instead.
 
+- `GET /api/tracks?query=` — legacy tracks/search feed (preferred). Supports optional query modifiers:
+  - `query=` — fuzzy search against `track_name` and `artist_name`
+  - `has_karaoke_fx=1|true|yes|on` — limit results to tracks with karaoke timing data
+  - `limit=` — maximum number of records returned (default 50, max 100)
+  - `offset=` — pagination offset (default 0)
 - `GET /api/v1/health` — health check endpoint (verify API is running)
 - `GET /api/v1/search?q=&type=&synced=` — fuzzy search (track/artist), optional `type` and `synced` filters
 - `GET /api/v1/get?title=&type=` — exact-match lookup by title (and optional type)
@@ -28,10 +33,9 @@ The project exposes a versioned API under `/api/v1/` (additive; legacy routes re
 - `GET /api/v1/raw/:id` — returns raw `.ass` file content as plain text
 - `POST /api/v1/upload` — v1 upload endpoint (metadata + `file_content`) — returns inserted record and `content_hash`
 
-The existing legacy endpoints remain for compatibility:
+The existing legacy upload route remains for compatibility:
 
 - `POST /api/upload` — (legacy) upload
-- `GET /api/tracks?query=` — legacy tracks/search feed
 
 See the source code in `api/` for implementation details.
 
