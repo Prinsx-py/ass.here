@@ -18,10 +18,22 @@ export default async function handler(req, res) {
   const limit = Math.min(100, Number(req.query.limit || 50));
   const offset = Math.max(0, Number(req.query.offset || 0));
 
-  let request = supabase.from('ass_tracks').select('*').order('created_at', { ascending: false });
-  if (query) {
-    request = request.or(`track_name.ilike.%${query}%,artist_name.ilike.%${query}%`);
-  }
+  let request = supabase
+  .from('ass_tracks')
+  .select('*')
+  .order('created_at', { ascending: false });
+
+if (query) {
+  const keywords = query
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  keywords.forEach((k) => {
+    request = request.ilike('search_text', `%${k}%`);
+  });
+}
 
   if (typeof hasKaraokeRaw !== 'undefined') {
     const val = String(hasKaraokeRaw).toLowerCase();
