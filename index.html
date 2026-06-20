@@ -6,14 +6,6 @@
   <title>ass.here | The .ass library</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<footer class="w-full flex justify-center items-center py-10">
-  <div class="flex flex-col items-center gap-2">
-    <span class="text-sm text-zinc-400">Support this project 💖</span>
-    <a href="https://ko-fi.com/D4T221QPWW" target="_blank" rel="noreferrer">
-      <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
-    </a>
-  </div>
-</footer>
 <body class="min-h-screen flex flex-col items-center p-6 font-sans bg-black text-white">
 
   <div class="text-center mt-10 mb-8 w-full max-w-4xl">
@@ -251,6 +243,18 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchDrops();
 
 });
+
 </script>
+<script src="https://storage.ko-fi.com/cdn/scripts/overlay-widget.js"></script>
+
+<script>
+kofiWidgetOverlay.draw('prinsx', {
+  'type': 'floating-chat',
+  'floating-chat.donateButton.text': 'Support me',
+  'floating-chat.donateButton.background-color': '#323842',
+  'floating-chat.donateButton.text-color': '#fff'
+  });
+  </script>
+
 </body>
 </html>

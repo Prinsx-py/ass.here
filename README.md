@@ -200,3 +200,7 @@ This repository is MIT licensed. See `LICENSE`.
 If you find a bug, privacy/security issue, or want a feature, please open an issue at the repository's Issues tab and include reproduction steps and relevant logs.
 
 Thank you for helping build ass.here — contributions welcome.
+
+## ☕ Support the project
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/D4T221QPWW)
