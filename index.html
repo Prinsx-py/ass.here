@@ -226,7 +226,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const right = document.createElement("div");
       const a = document.createElement("a");
       a.href = track.file_url
-      ? track.file_url + (track.file_url.includes("?") ? "&download" : "?download=1")
+      ? track.file_url + (track.file_url.includes("?") ? "&download" : "?download")
       : "#";
       a.textContent = "Download";
       a.className = "text-red-400 text-xs";
