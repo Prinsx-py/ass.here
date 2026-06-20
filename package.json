@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "node server.local.js"
+    "start": "vercel dev",
+    "dev": "vercel dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.40.0",

@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabase.js';
 import { validateAssContent, MAX_ASS_SIZE, computeSHA256 } from '../lib/validate.js';
+import { checkRateLimit } from '../lib/rateLimit.js';
 
 export default async function handler(req, res) {
   try {
@@ -13,6 +14,13 @@ export default async function handler(req, res) {
 
     const supabase = supabaseResult.client;
     const SUPABASE_BUCKET = supabaseResult.bucket;
+
+    // Rate limiting (IP-based)
+    const remoteIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    const rate = await checkRateLimit(supabase, remoteIp);
+    if (!rate.ok) {
+      return res.status(429).json({ error: 'Rate limit exceeded', details: rate });
+    }
 
     const {
       file_name: fileName,
