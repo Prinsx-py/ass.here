@@ -18,6 +18,7 @@ This repository contains the frontend and serverless API used by the public site
 ## Quick API summary (v1)
 The project exposes a versioned API under `/api/v1/` (additive; legacy routes remain for now):
 
+- `GET /api/v1/health` — health check endpoint (verify API is running)
 - `GET /api/v1/search?q=&type=&synced=` — fuzzy search (track/artist), optional `type` and `synced` filters
 - `GET /api/v1/get?title=&type=` — exact-match lookup by title (and optional type)
 - `GET /api/v1/get/:id` — lookup by id (returns metadata + stored fields)
@@ -66,6 +67,115 @@ vercel dev
 Notes:
 - Local dev uses the same `api/*.js` handlers that run in production. We removed the older `server.local.js` to avoid drift — use `vercel dev` to emulate Vercel serverless functions locally.
 - If you need to populate the DB schema (for rate limiter or `content_hash` column), run the SQL in `migrations/001_add_content_hash.sql` against your Supabase Postgres instance.
+
+---
+
+## Hosting & Deployment
+
+ass.here is optimized for serverless deployment on **Vercel**, but can be deployed anywhere with Node.js support.
+
+### For Operators / DevOps
+
+See [**HOSTING.md**](HOSTING.md) for comprehensive deployment guides including:
+- Deploying to Vercel (recommended)
+- Deploying to other platforms (AWS, Azure, etc.)
+- DNS configuration and troubleshooting
+- SSL/TLS certificate setup
+- Health checks and monitoring
+- Common issues and how to fix them
+
+**Key points:**
+- Ensure your domain has valid DNS A/AAAA records pointing to your server
+- Use HTTPS (all clients expect `https://` protocol)
+- Configure environment variables securely (never commit secrets)
+- Set up monitoring on the `/api/v1/health` endpoint
+
+### Common Issues
+
+**Problem:** "DNS resolution failed" or "API unreachable" errors
+
+**Solution:** Check [HOSTING.md DNS Configuration](HOSTING.md#dns-configuration) section. Most commonly:
+- DNS records not yet configured
+- DNS records pointing to old server
+- Waiting for DNS propagation (up to 48 hours)
+
+Test with: `nslookup ass.here` or `dig ass.here`
+
+---
+
+## Client Setup & Configuration
+
+ass.here provides clients with automatic fallback and retry logic. However, if you're hosting on a custom domain or the default `ass.here` domain is unreachable, clients need configuration.
+
+### For Users / Developers Using ass.here
+
+See [**CLIENT_SETUP.md**](CLIENT_SETUP.md) for comprehensive client configuration guides including:
+- Configuring browsers to use a custom API base
+- Configuring Node.js / CLI tools via environment variables
+- Handling DNS resolution failures gracefully
+- Troubleshooting connection issues
+- Performance optimization tips
+
+**Quick start:**
+
+Browser (in console):
+```javascript
+apiConfig.setApiBase('https://your-api-domain.com');
+```
+
+Node.js / CLI (in terminal):
+```bash
+export ASS_HERE_API_BASE=https://your-api-domain.com
+your-cli-tool search "query"
+```
+
+Docker:
+```dockerfile
+ENV ASS_HERE_API_BASE=https://your-api-domain.com
+```
+
+---
+
+## Diagnosis & Troubleshooting
+
+### Verify API Connectivity
+
+```bash
+# Test DNS resolution
+nslookup ass.here
+dig ass.here
+
+# Test HTTPS connectivity
+curl -I https://ass.here/api/v1/health
+
+# Test health endpoint
+curl https://ass.here/api/v1/health
+
+# Expected response (200 OK):
+# { "status": "healthy", "message": "API is operational", ... }
+```
+
+### Check Logs
+
+**Vercel:**
+- Dashboard → Deployments → Logs
+
+**Local development:**
+- `vercel dev` shows logs in terminal
+
+**Other platforms:**
+- Check application logs / stdout
+
+### Get Help
+
+1. Read [HOSTING.md](HOSTING.md) (if you're deploying the API)
+2. Read [CLIENT_SETUP.md](CLIENT_SETUP.md) (if you're using the API as a client)
+3. Run diagnostic commands above
+4. Open an issue on GitHub with diagnostics output and error messages
+
+---
+
+## Development
 
 ## Testing
 - There are no automated tests yet. Recommended quick checks:
