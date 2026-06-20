@@ -89,6 +89,10 @@
           card.appendChild(right);
           resultsEl.appendChild(card);
         });
+      } catch (err) {
+        console.error(err);
+        resultsEl.innerHTML = `<p class="text-red-400">Error: ${err?.message || 'Failed to load results'}</p>`;
+      }
     }
 
     // Trigger search on Enter
