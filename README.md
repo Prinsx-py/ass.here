@@ -23,6 +23,7 @@ The project exposes a versioned API, but the legacy search route is the preferre
   - `has_karaoke_fx=1|true|yes|on` — limit results to tracks with karaoke timing data
   - `limit=` — maximum number of records returned (default 50, max 100)
   - `offset=` — pagination offset (default 0)
+- `https://ass-here.vercel.app/api/tracks?query=Kundiman%20Silent%20Sanctuary` — example of query-based API call
 - `GET /api/v1/health` — health check endpoint (verify API is running)
 - `GET /api/v1/search?q=&type=&synced=` — fuzzy search (track/artist), optional `type` and `synced` filters
 - `GET /api/v1/get?title=&type=` — exact-match lookup by title (and optional type)
