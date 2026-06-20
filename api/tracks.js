@@ -11,7 +11,9 @@ export default async function handler(req, res) {
 
   const supabase = supabaseResult.client;
 
-  const query = String(req.query.query || '');
+  let query = String(req.query.query || '');
+  // sanitize query to avoid PostgREST filter injection
+  query = query.replace(/[,\(\)\*]/g, ' ').trim();
   const hasKaraokeRaw = req.query.has_karaoke_fx;
   const limit = Math.min(100, Number(req.query.limit || 50));
   const offset = Math.max(0, Number(req.query.offset || 0));

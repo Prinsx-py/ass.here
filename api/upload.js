@@ -89,7 +89,7 @@ export default async function handler(req, res) {
         has_karaoke_fx: hasKaraokeFx,
         file_url: fileUrl
       }
-    ]);
+    ]).select();
 
     if (dbError) {
       return res.status(500).json({ error: dbError.message });

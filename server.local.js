@@ -4,106 +4,136 @@ import multer from 'multer';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from './lib/supabase.js';
+import { validateAssContent } from './lib/validate.js';
+import { checkRateLimit } from './lib/rateLimit.js';
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: Number(process.env.MAX_ASS_SIZE || 200 * 1024) } });
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || 'ass-files';
 const PORT = process.env.PORT || 3000;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment');
-  process.exit(1);
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-  auth: { persistSession: false }
-});
-
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '500kb' }));
 app.use(express.urlencoded({ extended: true }));
 
+const supabaseResult = getSupabaseClient();
+if (supabaseResult.error) {
+  console.error(supabaseResult.error.message);
+  process.exit(1);
+}
+const supabase = supabaseResult.client;
+const SUPABASE_BUCKET = supabaseResult.bucket;
+
 app.get('/api/tracks', async (req, res) => {
-  const query = String(req.query.query || '');
+  try {
+    let query = String(req.query.query || '');
+    query = query.replace(/[,\(\)\*]/g, ' ').trim();
 
-  let request = supabase.from('ass_tracks').select('*').order('created_at', { ascending: false });
-  if (query) {
-    request = request.or(`track_name.ilike.%${query}%,artist_name.ilike.%${query}%`);
+    let request = supabase.from('ass_tracks').select('*').order('created_at', { ascending: false });
+    if (query) {
+      request = request.or(`track_name.ilike.%${query}%,artist_name.ilike.%${query}%`);
+    }
+
+    const { data, error } = await request;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data });
+  } catch (err) {
+    console.error('Tracks handler failed:', err);
+    return res.status(500).json({ error: err.message });
   }
-
-  const { data, error } = await request;
-  if (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  return res.json({ data });
 });
 
+// Accept either multipart/form-data (local form) OR JSON body with file_content
 app.post('/api/upload', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Missing file upload' });
-  }
-
-  const trackName = String(req.body.track_name || '').trim();
-  const artistName = String(req.body.artist_name || '').trim();
-  const sourceType = String(req.body.source_type || '').trim();
-  const duration = String(req.body.duration || '').trim();
-  const hasKaraokeFxRaw = String(req.body.has_karaoke_fx || 'false').toLowerCase();
-  const hasKaraokeFx = ['true', '1', 'yes', 'on'].includes(hasKaraokeFxRaw);
-
-  if (!trackName || !artistName || !duration) {
-    return res.status(400).json({ error: 'Track name, artist and duration are required' });
-  }
-
-  const fileExt = req.file.originalname.split('.').pop() || 'ass';
-  const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from(SUPABASE_BUCKET)
-    .upload(fileName, req.file.buffer, {
-      cacheControl: '3600',
-      contentType: req.file.mimetype,
-      upsert: false
-    });
-
-  if (uploadError) {
-    return res.status(500).json({ error: uploadError.message });
-  }
-
-  const { data: publicData, error: publicUrlError } = await supabase.storage
-    .from(SUPABASE_BUCKET)
-    .getPublicUrl(fileName);
-
-  if (publicUrlError || !publicData?.publicUrl) {
-    return res.status(500).json({ error: publicUrlError?.message || 'Could not obtain public URL' });
-  }
-
-  const fileUrl = publicData.publicUrl;
-
-  const { data: row, error: dbError } = await supabase.from('ass_tracks').insert([
-    {
-      track_name: trackName,
-      artist_name: artistName,
-      source_type: sourceType,
-      duration: parseFloat(duration),
-      has_karaoke_fx: hasKaraokeFx,
-      file_url: fileUrl
+  try {
+    const remoteIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
+    const rate = await checkRateLimit(supabase, remoteIp);
+    if (!rate.ok) {
+      return res.status(429).json({ error: 'Rate limit exceeded', details: rate });
     }
-  ]);
 
-  if (dbError) {
-    return res.status(500).json({ error: dbError.message });
+    let fileContent = null;
+    let fileName = null;
+    let contentType = 'text/plain';
+    // prefer JSON body with file_content
+    if (req.body && req.body.file_content) {
+      fileContent = String(req.body.file_content || '');
+      fileName = String(req.body.file_name || `${Date.now()}.ass`);
+      contentType = String(req.body.content_type || 'text/plain');
+    } else if (req.file) {
+      fileContent = req.file.buffer.toString('utf8');
+      fileName = req.file.originalname || `${Date.now()}.ass`;
+      contentType = req.file.mimetype || 'text/plain';
+    } else {
+      return res.status(400).json({ error: 'Missing file upload or file_content in JSON body' });
+    }
+
+    const trackName = String(req.body.track_name || '').trim();
+    const artistName = String(req.body.artist_name || '').trim();
+    const sourceType = String(req.body.source_type || '').trim();
+    const duration = String(req.body.duration || '').trim();
+    const hasKaraokeFxRaw = String(req.body.has_karaoke_fx || 'false').toLowerCase();
+    const hasKaraokeFx = ['true', '1', 'yes', 'on'].includes(hasKaraokeFxRaw);
+
+    if (!trackName || !artistName || !duration) {
+      return res.status(400).json({ error: 'Track name, artist and duration are required' });
+    }
+
+    // validate .ass sections
+    const { valid, errors } = validateAssContent(fileContent);
+    if (!valid) return res.status(400).json({ error: 'Invalid .ass file', details: errors });
+
+    // store file
+    const buffer = Buffer.from(fileContent, 'utf-8');
+    const uniqueFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .upload(uniqueFileName, buffer, {
+        cacheControl: '3600',
+        contentType: contentType || 'text/plain',
+        upsert: false
+      });
+
+    if (uploadError) {
+      return res.status(500).json({ error: uploadError.message });
+    }
+
+    const { data: publicData, error: publicUrlError } = await supabase.storage
+      .from(SUPABASE_BUCKET)
+      .getPublicUrl(uniqueFileName);
+
+    if (publicUrlError || !publicData?.publicUrl) {
+      return res.status(500).json({ error: publicUrlError?.message || 'Could not obtain public URL' });
+    }
+
+    const fileUrl = publicData.publicUrl;
+
+    const { data: row, error: dbError } = await supabase.from('ass_tracks').insert([
+      {
+        track_name: trackName,
+        artist_name: artistName,
+        source_type: sourceType,
+        duration: parseFloat(duration),
+        has_karaoke_fx: hasKaraokeFx,
+        file_url: fileUrl
+      }
+    ]).select();
+
+    if (dbError) {
+      return res.status(500).json({ error: dbError.message });
+    }
+
+    return res.status(201).json({ data: row?.[0] || null, fileUrl });
+  } catch (err) {
+    console.error('Upload handler failed:', err);
+    return res.status(500).json({ error: err.message });
   }
-
-  return res.status(201).json({ data: row?.[0] || null, fileUrl });
 });
 
 app.use(express.static(path.join(__dirname)));
