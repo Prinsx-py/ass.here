@@ -1,5 +1,4 @@
 import { getSupabaseClient } from '../../../lib/supabase.js';
-import fetch from 'node-fetch';
 
 function isValidUrl(value) {
   try {
@@ -41,7 +40,7 @@ export default async function handler(req, res) {
     if (!isValidUrl(fileUrl)) return res.status(502).json({ error: 'Invalid file_url stored in database' });
 
     const fetchFile = async (url) => {
-      const response = await fetch(url);
+      const response = await globalThis.fetch(url);
       if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
         throw new Error(`${response.status} ${response.statusText}${bodyText ? `: ${bodyText}` : ''}`);

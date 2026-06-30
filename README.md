@@ -12,31 +12,32 @@ This repository contains the frontend and serverless API used by the public site
 - Public, keyless read API for searching and downloading `.ass` files.
 - Uploads accept `.ass` files with metadata (track, artist, source, duration, karaoke sync flag).
 - Server-side validation rejects malformed `.ass` files and enforces a max file size.
-- Best-effort duplicate detection (SHA-256 content hash) and IP-based rate limiting on uploads.
+- Atomic IP rate-limiting on uploads (default 10/hour per IP) via a single Postgres RPC; uploads are refused with HTTP 503 if the rate-limit table is unreachable.
+- Best-effort duplicate detection on the legacy `/api/upload` route (track + artist + duration).
 - Written in Node.js (ESM) and deployed as Vercel serverless functions; Supabase (Postgres + Storage) is used for persistence.
 
 ## Quick API summary
-The project exposes a versioned API, but the legacy search route is the preferred working endpoint for track search in current deployments. If `/api/v1/search` is failing, use `/api/tracks?query=` instead.
+All routes below live under `/api` and are deployed as Vercel serverless functions from `api/**.js`.
 
-- `GET /api/tracks?query=` — legacy tracks/search feed (preferred). Supports optional query modifiers:
-  - `query=` — fuzzy search against `track_name` and `artist_name`
-  - `has_karaoke_fx=1|true|yes|on` — limit results to tracks with karaoke timing data
-  - `limit=` — maximum number of records returned (default 50, max 100)
-  - `offset=` — pagination offset (default 0)
-- `https://ass-here.vercel.app/api/tracks?query=Kundiman%20Silent%20Sanctuary` — example of query-based API call
-- `GET /api/v1/health` — health check endpoint (verify API is running)
-- `GET /api/v1/search?q=&type=&synced=` — fuzzy search (track/artist), optional `type` and `synced` filters
-- `GET /api/v1/get?title=&type=` — exact-match lookup by title (and optional type)
-- `GET /api/v1/get/:id` — lookup by id (returns metadata + stored fields)
-- `GET /api/v1/recent` — recent uploads
-- `GET /api/v1/top` — (placeholder) top/recent uploads
-- `GET /api/v1/random` — random track
-- `GET /api/v1/raw/:id` — returns raw `.ass` file content as plain text
-- `POST /api/v1/upload` — v1 upload endpoint (metadata + `file_content`) — returns inserted record and `content_hash`
+### Legacy routes (preferred — stable, used by the frontend)
 
-The existing legacy upload route remains for compatibility:
+- `GET /api/tracks?query=` — fuzzy search feed. Supports:
+  - `query=` — space-separated keywords AND-matched against a denormalized `search_text` column (`track_name` + `artist_name` + `source_type`)
+  - `has_karaoke_fx=1|true|yes|on` — limit to karaoke-timed files
+  - `limit=` — default 50, max 100
+  - `offset=` — pagination offset, default 0
+- Example: `https://ass-here.vercel.app/api/tracks?query=Kundiman%20Silent%20Sanctuary`
+- `POST /api/upload` — legacy upload. Validates `.ass`, enforces 200 KB cap, dedupes on track+artist+duration (409), SHA-256 hashed, IP rate-limited, writes a `search_text` column for the keyword matcher above.
 
-- `POST /api/upload` — (legacy) upload
+### Versioned routes (`/api/v1/*`)
+
+- `GET /api/v1/health` — health check (verifies Supabase connectivity)
+- `GET /api/v1/search?q=&type=&synced=` — fuzzy search. If `synced=1` returns 0 hits, responds with `{ fallback: true, … }` and broader results.
+- `GET /api/v1/get?title=&type=` — exact-match by title (optional `type` filter)
+- `GET /api/v1/get/:id` — lookup by id
+- `GET /api/v1/recent` — newest uploads (default 20, max 100)
+- `GET /api/v1/raw/:id` — streams raw `.ass` text; falls back to a Supabase signed URL if the public fetch fails
+- `POST /api/v1/upload` — JSON upload (`file_content` in body). Same `.ass` validation and IP rate-limit as the legacy route. Filenames are timestamp-prefixed and sanitized.
 
 See the source code in `api/` for implementation details.
 
@@ -71,7 +72,9 @@ vercel dev
 
 Notes:
 - Local dev uses the same `api/*.js` handlers that run in production. We removed the older `server.local.js` to avoid drift — use `vercel dev` to emulate Vercel serverless functions locally.
-- If you need to populate the DB schema (for rate limiter or `content_hash` column), run the SQL in `migrations/001_add_content_hash.sql` against your Supabase Postgres instance.
+- Required schema lives in `migrations/`:
+  - `migrations/001_add_content_hash.sql` — adds an optional `content_hash` column to `ass_tracks` for exact deduplication.
+  - `migrations/002_upload_rate_limits.sql` — creates the `upload_rate_limits` table and the `consume_upload_quota(ip, limit, window_sec)` RPC consumed by `lib/rateLimit.js`. **Required**: the upload rate limiter is fail-closed when this migration is missing (returns HTTP 503), so apply it once per Supabase project.
 
 ---
 
@@ -122,65 +125,21 @@ ass.here provides **secure-by-default** clients:
 
 ### Server-Side Clients (CLI tools, Node.js apps)
 
-Server-side tools can use flexible API configuration via environment variables:
+The API is plain HTTPS + JSON; `fetch` (Node 18+) or `curl` is enough. There is no SDK to import. If you do want a self-hosted deployment rather than the public `ass.here` host:
 
 ```bash
 export ASS_HERE_API_BASE=https://your-api-domain.com
-export ASS_HERE_TIMEOUT=15000
-export ASS_HERE_RETRY_COUNT=3
 ```
-
-Uses `lib/api-config.js` for retry logic, fallbacks, and error handling.
 
 See [CLIENT_SETUP.md Node.js Clients](CLIENT_SETUP.md#nodejs-clients) and [CLIENT_SETUP.md CLI Tools](CLIENT_SETUP.md#cli-tools).
 
 ---
 
-## Diagnosis & Troubleshooting
-
-### Verify API Connectivity
-
-```bash
-# Test DNS resolution
-nslookup ass.here
-dig ass.here
-
-# Test HTTPS connectivity
-curl -I https://ass.here/api/v1/health
-
-# Test health endpoint
-curl https://ass.here/api/v1/health
-
-# Expected response (200 OK):
-# { "status": "healthy", "message": "API is operational", ... }
-```
-
-### Check Logs
-
-**Vercel:**
-- Dashboard → Deployments → Logs
-
-**Local development:**
-- `vercel dev` shows logs in terminal
-
-**Other platforms:**
-- Check application logs / stdout
-
-### Get Help
-
-1. Read [HOSTING.md](HOSTING.md) (if you're deploying the API)
-2. Read [CLIENT_SETUP.md](CLIENT_SETUP.md) (if you're using the API as a client)
-3. Run diagnostic commands above
-4. Open an issue on GitHub with diagnostics output and error messages
-
----
-
-## Development
-
 ## Testing
-- There are no automated tests yet. Recommended quick checks:
-	- Start `vercel dev` and hit `/api/v1/recent` and `/api/v1/search?q=...`.
-	- Upload a valid `.ass` via the frontend and verify the record appears in Supabase and the returned `content_hash` looks stable.
+- Run `npm test` (Node ≥ 18 ships the built-in `node --test` runner; no extra deps).
+- Coverage focuses on the pure-JS helpers in `lib/` (`validate.js`, `rateLimit.js`). End-to-end coverage of the API routes needs real Supabase credentials and is left manual:
+  - With `vercel dev` running, hit `/api/v1/health`, `/api/v1/recent`, `/api/v1/search?q=…`, `/api/tracks?query=…`.
+  - Upload a valid `.ass` via the frontend and verify the record appears in Supabase and the returned `content_hash` looks stable.
 
 ## Contributing
 - Open issues for bugs or feature requests; use pull requests for code changes.

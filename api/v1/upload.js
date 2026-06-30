@@ -18,7 +18,10 @@ export default async function handler(req, res) {
 
   const remoteIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
   const rate = await checkRateLimit(supabase, remoteIp);
-  if (!rate.ok) return res.status(429).json({ error: 'Rate limit exceeded', details: rate });
+  if (!rate.ok) {
+    const status = rate.error?.includes('unavailable') ? 503 : 429;
+    return res.status(status).json({ error: rate.error || 'Rate limit exceeded', details: rate });
+  }
 
   const {
     file_name: fileName,

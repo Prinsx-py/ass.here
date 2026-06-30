@@ -1,6 +1,10 @@
 # Client Setup Guide for ass.here
 
-This guide explains how to configure clients to connect to the ass.here API with robust error handling and fallback strategies.
+This guide explains how to connect browser frontends, Node.js apps, and CLI tools to the ass.here API.
+
+> **TL;DR** — The HTTP API is plain JSON over HTTPS. There is no client SDK; you call it with `fetch`, `curl`, or whatever your stack uses. The two things that matter for clients: (1) cookies/secrets aren't involved — reads are fully keyless, and (2) the browser frontend is pinned to its own origin on purpose.
+
+---
 
 ## Table of Contents
 1. [Overview](#overview)
@@ -13,433 +17,209 @@ This guide explains how to configure clients to connect to the ass.here API with
 
 ## Overview
 
-ass.here provides **secure-by-default** clients with a clear separation between frontend and backend:
+ass.here keeps a clean split between frontend and backend clients:
 
 ### Browser Frontend (Public)
-- **Cannot be reconfigured by users** — connects to the domain it's served from
-- Prevents DNS hijacking and social engineering attacks
-- Deploy frontend + API on the same domain (Vercel, traditional server) or use a reverse proxy
+- **Cannot be reconfigured by users** — the API URL is the same origin the page was served from.
+- Prevents DNS hijacking and social-engineered redirection to a malicious host.
+- Deploy frontend + API on the same domain (Vercel, or any reverse proxy). Don't split them across origins.
 
 ### Server-Side Clients (CLI, Node.js)
-- **Can be configured via environment variables** for flexible deployment
-- Supports automatic retry, fallbacks, and timeout handling
-- Use `lib/api-config.js` module
+- Plain `fetch` / `curl` against the API. No SDK, no auth header required for reads.
+- For uploads, expect a JSON body with `file_content` (see [README → API summary](README.md#quick-api-summary)).
 
-**Key Point:** If you see an error from the browser frontend saying the API is unreachable, it's likely a network/DNS issue, not a configuration problem. Check your internet connection and ensure your API is deployed correctly on the same domain.
+**Rule of thumb:** if the browser shows "API unreachable", it's a network or origin-mismatch problem, not configuration. The frontend has no configurable API URL to "fix".
 
 ---
 
 ## Browser Clients
 
-### Using the Frontend (index.html / search.html)
+### How the frontend resolves its API base
 
-The HTML frontend is designed for **public deployment** with a fixed API endpoint. It does NOT have user-configurable API settings to prevent DNS hijacking and other security issues.
+`index.html` and `search.html` use a constant `API_BASE = ''`. That means **same-origin** requests:
 
-#### How API URL is Determined
+- Pages at `https://ass.here/` → call `https://ass.here/api/...`
+- Pages at `https://my-custom-domain.com/` → call `https://my-custom-domain.com/api/...`
 
-The frontend always uses the **same domain it was served from**:
-- If you access `https://ass.here/`, it calls `https://ass.here/api/v1/*`
-- If you access `https://my-custom-domain.com/`, it calls `https://my-custom-domain.com/api/v1/*`
+This is intentional: forbidding an in-page API URL stops a phishing page from repointing users at an attacker's server.
 
-This ensures users cannot be socially engineered into connecting to malicious servers.
+### Option 1: Same-domain deployment (recommended)
 
-#### Option 1: Deploy to Your API Domain (Recommended)
+Host the static `index.html` and `search.html` next to the API. On Vercel this is automatic; elsewhere, just serve them from the same root.
 
-Host the static HTML files (`index.html`, `search.html`) on **the same domain** as your API:
+### Option 2: Reverse proxy
 
-```bash
-# On Vercel:
-# Deploy both frontend and API to the same project
-# They'll share the same domain automatically
-
-# On other platforms:
-# Serve index.html and search.html from the same server as /api/
-```
-
-This is the simplest and most secure approach.
-
-#### Option 2: Use a Reverse Proxy
-
-If you need to serve the frontend separately, use a reverse proxy to combine them:
+If you have to run the frontend and API on separate hosts, put a proxy in front so paths unify:
 
 ```nginx
-# Nginx example
 server {
   listen 443 ssl;
   server_name ass.here;
 
-  # Serve static frontend files
+  # Static frontend
   location / {
     root /var/www/ass.here;
     try_files $uri /index.html;
   }
 
-  # Proxy API requests to backend server
+  # API requests → backend
   location /api/ {
     proxy_pass https://api-backend.internal/api/;
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   }
 }
 ```
 
-Users accessing `https://ass.here/` see the frontend, and `/api/` requests go to your backend.
+Users see `https://ass.here/`, `/api/*` lands on your backend, and the frontend's `API_BASE = ''` keeps working.
 
-#### Option 3: Configure at Build Time (Advanced)
+### Option 3: Build-time API base (advanced)
 
-If using a build tool like Webpack/Vite, set API_BASE at build time:
+If you really must put the frontend on a different origin, edit `index.html`/`search.html` and set
 
-```bash
-# Build with custom API base
-API_BASE=https://api.example.com npm run build
+```html
+<script>window.ASS_HERE_API_BASE = 'https://api.example.com';</script>
 ```
 
-Then embed it in the bundled JavaScript. **Requires rebuilding for each deployment.**
+…before the inline `<script>`, then change the `const API_BASE = ''` lines to use `window.ASS_HERE_API_BASE || ''`. **Re-build before each deploy.** This loosens the security model above — make sure you understand it before doing it.
 
 ---
 
 ## Node.js Clients
 
-### Using the API Configuration Module
+Just use `fetch` (Node 18+) or `node-fetch`. There's no client library to import.
 
-The `lib/api-config.js` module provides robust API client configuration **for server-side use only** (CLI tools, Node.js apps, backend services).
-
-**Do NOT use this in browser code** — the browser frontend uses a fixed API endpoint for security.
+### Read example
 
 ```javascript
-import apiConfig from './lib/api-config.js';
-
-// Option 1: Set custom API base
-apiConfig.setApiBase('https://api.example.com');
-
-// Option 2: Use environment variable
-process.env.ASS_HERE_API_BASE = 'https://api.example.com';
-
-// Fetch from API with retry and timeout
-try {
-  const response = await apiConfig.fetch('/api/v1/search?q=test');
-  const data = await response.json();
-  console.log('Search results:', data);
-} catch (err) {
-  console.error('API error:', err.message);
-  
-  // Handle specific error types
-  if (err.code === 'API_UNREACHABLE') {
-    console.error('Tried these URLs:', err.candidates);
-  }
-}
-```
-
-### With Error Handling
-
-```javascript
-import apiConfig, { getErrorMessage } from './lib/api-config.js';
+const base = process.env.ASS_HERE_API_BASE || 'https://ass.here';
 
 async function searchTracks(query) {
-  try {
-    const response = await apiConfig.fetchJson('/api/v1/search', {
-      method: 'GET',
-      // Add custom headers if needed
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    return response.data || [];
-  } catch (err) {
-    const userMessage = getErrorMessage(err);
-    console.error('❌ ' + userMessage);
-    throw err;
-  }
+  const url = `${base}/api/tracks?query=${encodeURIComponent(query)}&limit=20`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  return json.data || [];
 }
 
-searchTracks('Steins Gate')
-  .then(results => console.log('Found:', results))
-  .catch(err => {
-    // Error already logged with user-friendly message
-    process.exit(1);
-  });
+const results = await searchTracks('Silent Sanctuary');
+console.log(results);
 ```
+
+### Upload example
+
+```javascript
+import fs from 'node:fs/promises';
+
+const base = process.env.ASS_HERE_API_BASE || 'https://ass.here';
+const file = await fs.readFile('./kundiman.ass', 'utf8');
+
+const res = await fetch(`${base}/api/v1/upload`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    file_name: 'kundiman.ass',
+    file_content: file,           // text body, ≤ 200 KB
+    track_name: 'Kundiman',
+    artist_name: 'Silent Sanctuary',
+    source_type: 'Song',
+    duration: 245.5,
+    has_karaoke_fx: true
+  })
+});
+const json = await res.json();
+if (!res.ok) throw new Error(json.error || 'upload failed');
+console.log('Uploaded:', json.data?.id, 'hash:', json.content_hash);
+```
+
+For higher upload throughput or to use the legacy `/api/upload` endpoint (which dedupes on track/artist/duration), see the [API summary](README.md#quick-api-summary).
+
+### Tips
+- **Timeout**: `AbortController` with a 10–15 s timeout is plenty for reads. Uploads can be larger, scale timeout to file size.
+- **Retries**: don't retry non-idempotent upload bodies blindly; add `If-Match` semantics or a client-generated idempotency key if you need safe retries.
+- **Rate limit**: uploads are IP-limited server-side (default 10/hour). One process per host is fine; multi-process scrapers should expect 429s.
 
 ---
 
 ## CLI Tools
 
-### terminal.lyrics.ass Example
+```bash
+# Read
+curl 'https://ass.here/api/tracks?query=Silent%20Sanctuary'
 
-If you're using a CLI tool like `terminal.lyrics.ass`, set the environment variable before running:
+# Custom API base (for self-hosted / staging)
+ASS_BASE=https://ass.example.com
+curl "$ASS_BASE/api/v1/health"
+
+# Upload (file_content must be embedded as a string; not multipart)
+ASS_CONTENT=$(jq -Rs '{file_name:"kundiman.ass", file_content:., track_name:"Kundiman",
+  artist_name:"Silent Sanctuary", source_type:"Song", duration:245.5}' < kundiman.ass)
+curl -X POST "$ASS_BASE/api/v1/upload" \
+  -H 'Content-Type: application/json' \
+  -d "$ASS_CONTENT"
+```
+
+### Shell alias
 
 ```bash
-# Option 1: Set for a single command
-ASS_HERE_API_BASE="https://api.example.com" your-cli-tool search "query"
-
-# Option 2: Export for the session
-export ASS_HERE_API_BASE="https://api.example.com"
-your-cli-tool search "query"
-your-cli-tool search "another query"
-unset ASS_HERE_API_BASE  # Clear when done
+# ~/.bashrc or ~/.zshrc
+alias ass='curl -s https://ass.here/api/tracks?query='
+# Use:  ass "kundiman"
 ```
-
-### .env File Method
-
-Create a `.env` file in your project:
-
-```bash
-# .env
-ASS_HERE_API_BASE=https://api.example.com
-ASS_HERE_TIMEOUT=15000
-ASS_HERE_RETRY_COUNT=3
-```
-
-Then source it before running your tool:
-
-```bash
-source .env
-your-cli-tool search "query"
-```
-
-### Shell Alias Method
-
-Add to your `~/.bashrc` or `~/.zshrc`:
-
-```bash
-alias ass-cli='ASS_HERE_API_BASE=https://api.example.com your-cli-tool'
-
-# Then use it like:
-ass-cli search "query"
-```
-
----
-
-## Docker Deployment
-
-If deploying a **server-side** client (CLI tool, Node.js service) in Docker:
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copy your client code
-COPY . .
-
-# Install dependencies
-RUN npm install
-
-# Set environment variable (for server-side tools only)
-ENV ASS_HERE_API_BASE=https://api.example.com
-
-# Run your CLI tool or app
-CMD ["node", "cli.js"]
-```
-
-Build and run:
-
-```bash
-docker build -t my-ass-client .
-docker run -e ASS_HERE_API_BASE=https://api.example.com my-ass-client
-```
-
-**Note:** The browser frontend does NOT use environment variables — it must be deployed on the same domain as the API.
 
 ---
 
 ## Troubleshooting
 
-### Problem: Browser frontend says "API unreachable"
+### Browser: "API unreachable"
 
-**Cause:** The API is not available on the same domain as the frontend
+1. Are the API and frontend on the **same domain**? If not, set up a reverse proxy (above) or move one of them.
+2. DNS: `nslookup your-domain.com` and `dig your-domain.com`
+3. Health probe from the same machine the browser runs on: `curl https://your-domain.com/api/v1/health`
+4. Browser DevTools → Network tab → check the request URL and CORS errors.
 
-**Solutions:**
-1. Check that your API is deployed and running
-2. Verify DNS: `nslookup your-domain.com`
-3. Test API health: `curl https://your-domain.com/api/v1/health`
-4. Check internet connection
-5. Review [HOSTING.md](HOSTING.md#dns-configuration) for DNS configuration issues
+### Node/CLI: connection errors
 
-### Problem: Node.js/CLI tool says "API unreachable"
+1. `nslookup` / `dig` the API host.
+2. Try `curl -v https://your-api/api/v1/health` to see the TLS chain.
+3. Override the host with `ASS_HERE_API_BASE=https://...` if your tooling supports it.
 
-**Diagnostic:**
+### HTTP 429 (rate limit)
 
-```javascript
-// Test DNS resolution
-import dns from 'dns';
-dns.resolve4('your-api-domain.com', (err, addresses) => {
-  if (err) {
-    console.error('DNS failed:', err.code);  // ENOTFOUND = not resolvable
-  } else {
-    console.log('DNS resolved to:', addresses);
-  }
-});
+Uploads are capped at `UPLOAD_RATE_LIMIT` (default 10) per `UPLOAD_RATE_WINDOW` (default 3600s) per IP.
+- Wait for the reset window.
+- For multi-host integrations, contact the maintainers for a higher limit.
 
-// Test connectivity with apiConfig
-import apiConfig from './lib/api-config.js';
-apiConfig.fetchJson('/api/v1/health')
-  .then(data => console.log('Status:', data.status))
-  .catch(err => console.error('Connection error:', err.message));
-```
+### HTTP 413 (file too large)
 
-**Solutions:**
-1. Verify DNS: `nslookup your-api-domain.com` or `dig your-api-domain.com`
-2. Set custom API base: `export ASS_HERE_API_BASE=https://working-api.com`
-3. Check timeout: Increase `ASS_HERE_TIMEOUT=30000` if network is slow
-4. Increase retries: Set `ASS_HERE_RETRY_COUNT=5` for flaky networks
+Server caps `.ass` uploads at 200 KB. Trim or split the file before retrying.
 
-### Problem: "Timeout" errors on slow network
+### HTTP 400 / 409 from upload
 
-**Solutions:**
-
-```bash
-# Increase timeout to 30 seconds (milliseconds)
-export ASS_HERE_TIMEOUT=30000
-your-cli-tool search "query"
-```
-
-Or in code:
-
-```javascript
-import apiConfig from './lib/api-config.js';
-apiConfig.timeout = 30000;  // milliseconds
-```
-
-### Problem: "CORS" errors in browser
-
-**Cause:** Browser blocking cross-origin requests
-
-**Solutions:**
-1. **Deploy frontend and API on same domain** (best)
-   - Frontend should be served from the same domain as the API
-   - Use Vercel, traditional server, or reverse proxy setup
-2. Ensure your API returns correct CORS headers
-   - Check that responses include `Access-Control-Allow-Origin: *`
-   - ass.here API handlers should already have CORS enabled
-
-### Problem: Rate limiting (HTTP 429)
-
-**Cause:** Too many requests
-
-**Solutions:**
-1. Add delay between requests:
-   ```javascript
-   await new Promise(resolve => setTimeout(resolve, 100));  // 100ms delay
-   ```
-2. Reduce `ASS_HERE_RETRY_COUNT` to avoid retry storms
-3. Cache results to avoid repeated requests
-4. Contact maintainers for higher rate limits
-
----
-
-## Performance Tips
-
-### For Node.js / Server-Side Clients
-
-#### 1. Use Health Check Before Making Requests
-
-```javascript
-// Only attempt searches if API is healthy
-const healthCheck = await apiConfig.fetchJson('/api/v1/health');
-if (healthCheck.status === 'healthy') {
-  // Safe to make requests
-}
-```
-
-#### 2. Cache Results
-
-```javascript
-const cache = new Map();
-
-async function cachedSearch(query) {
-  if (cache.has(query)) {
-    return cache.get(query);
-  }
-  
-  const results = await apiConfig.fetchJson(`/api/v1/search?q=${encodeURIComponent(query)}`);
-  cache.set(query, results);
-  
-  return results;
-}
-```
-
-#### 3. Batch Requests
-
-Instead of:
-```javascript
-for (const query of queries) {
-  await apiConfig.fetchJson(`/api/v1/search?q=${query}`);
-}
-```
-
-Consider fetching in parallel (with reasonable limits):
-```javascript
-const results = await Promise.all(
-  queries.map(q => apiConfig.fetchJson(`/api/v1/search?q=${q}`))
-);
-```
-
-#### 4. Handle Errors Gracefully
-
-```javascript
-try {
-  const results = await apiConfig.fetchJson('/api/v1/search?q=test');
-  return results;
-} catch (err) {
-  console.warn('API failed, using fallback:', err.message);
-  return getCachedResults() || [];  // Fallback to cache or defaults
-}
-```
+- 400 with `Invalid .ass file`: file is missing `[Script Info]`, `[V4+ Styles]`/`[V4 Styles]`, or `[Events]`.
+- 409 from `/api/upload`: another row already has the same track/artist/duration. `/api/v1/upload` is non-deduping.
 
 ---
 
 ## Verifying Your Setup
 
-### For Browser Frontend
-
 ```bash
-# Test 1: Check DNS resolution
 nslookup ass.here
-
-# Test 2: Test HTTPS connectivity
 curl -I https://ass.here/api/v1/health
-
-# Test 3: Test JSON response
-curl https://ass.here/api/v1/health
-
-# Test 4: Test search endpoint
-curl 'https://ass.here/api/v1/search?q=test'
+curl 'https://ass.here/api/v1/health'
+curl 'https://ass.here/api/tracks?query=test'
 ```
 
-### For Server-Side Clients (Node.js / CLI)
+For a self-hosted deployment, swap the host:
 
 ```bash
-# Test 1: Check DNS resolution
-nslookup your-api-domain.com
-
-# Test 2: Test API with custom base
-ASS_HERE_API_BASE=https://your-api-domain.com node -e "
-  import('./lib/api-config.js').then(m => {
-    console.log('API Base:', m.apiConfig.getApiBase());
-    return m.apiConfig.fetchJson('/api/v1/health');
-  }).then(data => {
-    console.log('Health:', data.status);
-  }).catch(err => {
-    console.error('Error:', err.message);
-  })
-"
-
-# Test 3: Use your CLI tool
-export ASS_HERE_API_BASE=https://your-api-domain.com
-your-cli-tool search "query"
+curl -I "$ASS_HERE_API_BASE/api/v1/health"
 ```
 
 ---
 
 ## Getting Help
 
-If you continue to have issues:
-
-1. Check the [HOSTING.md](HOSTING.md) guide for deployment issues
+1. Read [HOSTING.md](HOSTING.md) (if you're deploying the API)
 2. Run the diagnostic commands above
-3. Check API logs on the server side
-4. Open an issue on GitHub with:
-   - OS and Node.js version
-   - Output of diagnostic commands
-   - Your configuration (without secrets)
-   - Error message and stack trace
+3. Open an issue with: OS, Node.js version, command/output, and (without secrets) your config.
